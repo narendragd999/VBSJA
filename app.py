@@ -210,6 +210,24 @@ def load_data(force_refresh=False):
 
     return df, data_source
 
+def extract_column_m_timestamp(df):
+    """
+    Extracts timestamp from Column M (index 12) of Google Sheets.
+    Can be in the column header name (e.g. '1:30 PM') or in the first data row of Column M.
+    """
+    if df is None:
+        return None
+    if len(df.columns) > 12:
+        col_m_name = str(df.columns[12]).strip()
+        first_vals = df.iloc[:, 12].dropna()
+        if not first_vals.empty:
+            v = str(first_vals.iloc[0]).strip()
+            if v and v.lower() not in ['', 'nan', 'none']:
+                return v
+        if col_m_name and not col_m_name.startswith('Unnamed:') and col_m_name.lower() not in ['', 'nan', 'none']:
+            return col_m_name
+    return None
+
 # ==========================================
 # SIDEBAR CONTROLS & FILTERS
 # ==========================================
@@ -227,6 +245,7 @@ with st.sidebar:
 with st.spinner("डेटा लोड हो रहा है, कृपया प्रतीक्षा करें..."):
     try:
         raw_df, data_source_info = load_data()
+        sheet_timestamp = extract_column_m_timestamp(raw_df)
     except Exception as e:
         st.error(f"डेटा लोड करने में असमर्थ: {e}")
         st.stop()
@@ -268,6 +287,8 @@ with st.sidebar:
 
     st.markdown("---")
     st.caption(f"📌 स्रोत: {data_source_info}")
+    if sheet_timestamp:
+        st.caption(f"⏱️ Data updated on: **{sheet_timestamp}**")
     st.caption(f"🕒 लोड समय: {datetime.now().strftime('%d-%m-%Y %I:%M %p')}")
 
 # ==========================================
@@ -392,12 +413,13 @@ top_district_entries = district_agg.iloc[0]["कुल की गई प्र�
 # ==========================================
 # MAIN HEADER BANNER
 # ==========================================
-st.markdown("""
-<div class="main-header">
-    <div class="main-title">📊 VBSJA जिलावार प्रविष्टि एवं रैंकिंग पोर्टल</div>
-    <div class="subtitle">Google Spreadsheet वास्तविक समय डेटा • प्रत्येक जिले की मूल राज्य रैंकिंग (Original State Rank) के साथ</div>
-</div>
-""", unsafe_allow_html=True)
+ts_badge_html = ""
+if sheet_timestamp:
+    ts_badge_html = f"""<div style="background: rgba(255, 255, 255, 0.16); border: 1.5px solid rgba(255, 255, 255, 0.4); border-radius: 12px; padding: 8px 18px; text-align: right; backdrop-filter: blur(6px); box-shadow: 0 2px 10px rgba(0,0,0,0.12);"><div style="font-size: 0.78rem; color: #DBEAFE; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; display: flex; align-items: center; justify-content: flex-end; gap: 6px;"><span>⏱️ Data Updated on</span><span style="background: #F59E0B; color: #111827; padding: 1px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 800;"></span></div><div style="font-size: 1.55rem; font-weight: 800; color: #FFFFFF; line-height: 1.25; margin-top: 2px; letter-spacing: 0.5px;">{sheet_timestamp}</div></div>"""
+
+header_html = f"""<div class="main-header"><div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;"><div><div class="main-title">📊 VBSJA जिलावार प्रविष्टि एवं रैंकिंग पोर्टल</div><div class="subtitle"> प्रत्येक जिले की मूल राज्य रैंकिंग (Original State Rank) के साथ</div></div>{ts_badge_html}</div></div>"""
+
+st.html(header_html)
 
 # KPI Metric Cards
 kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
@@ -471,6 +493,8 @@ if not district_agg.empty:
         st.session_state["dist_summary_chosen_district"] = st.session_state["app_selected_district"]
     if "block_report_chosen_district" not in st.session_state:
         st.session_state["block_report_chosen_district"] = st.session_state["app_selected_district"]
+    if "nikay_report_chosen_district" not in st.session_state:
+        st.session_state["nikay_report_chosen_district"] = st.session_state["app_selected_district"]
 
     # 3. Synchronized callbacks: changing ANY dropdown synchronizes all others
     def on_top_district_change():
@@ -479,6 +503,7 @@ if not district_agg.empty:
             st.session_state["app_selected_district"] = chosen
             st.session_state["dist_summary_chosen_district"] = chosen
             st.session_state["block_report_chosen_district"] = chosen
+            st.session_state["nikay_report_chosen_district"] = chosen
 
     def on_summary_district_change():
         chosen = st.session_state.get("dist_summary_chosen_district")
@@ -486,6 +511,7 @@ if not district_agg.empty:
             st.session_state["app_selected_district"] = chosen
             st.session_state["top_district_select"] = chosen
             st.session_state["block_report_chosen_district"] = chosen
+            st.session_state["nikay_report_chosen_district"] = chosen
 
     def on_block_district_change():
         chosen = st.session_state.get("block_report_chosen_district")
@@ -493,6 +519,15 @@ if not district_agg.empty:
             st.session_state["app_selected_district"] = chosen
             st.session_state["top_district_select"] = chosen
             st.session_state["dist_summary_chosen_district"] = chosen
+            st.session_state["nikay_report_chosen_district"] = chosen
+
+    def on_nikay_district_change():
+        chosen = st.session_state.get("nikay_report_chosen_district")
+        if chosen:
+            st.session_state["app_selected_district"] = chosen
+            st.session_state["top_district_select"] = chosen
+            st.session_state["dist_summary_chosen_district"] = chosen
+            st.session_state["block_report_chosen_district"] = chosen
 
     def set_spotlight_all():
         st.session_state["top_district_select"] = ALL_DIST_OPTION
@@ -502,6 +537,7 @@ if not district_agg.empty:
         st.session_state["top_district_select"] = default_district
         st.session_state["dist_summary_chosen_district"] = default_district
         st.session_state["block_report_chosen_district"] = default_district
+        st.session_state["nikay_report_chosen_district"] = default_district
 
     with st.container():
         col_sel, col_det = st.columns([1, 2.5])
@@ -811,6 +847,12 @@ dsumm_col_t, dsumm_col_d = st.columns([2.2, 1.8])
 with dsumm_col_t:
     st.subheader("📊 जिला इवेंटवार सारांश रैंकिंग रिपोर्ट")
     st.caption("💡 चयनित जिले का प्रत्येक इवेंट केटेगरी में राज्य स्तरीय प्रदर्शन एवं रैंक, तथा अंतिम पंक्ति में समग्र (सभी इवेंट जोड़कर) कुल योग एवं मूल राज्य रैंक")
+    st.markdown("""<div style="margin-top: 4px; margin-bottom: 8px;">
+        <span style="font-size: 13px; font-weight: 700; color: #1e293b; margin-right: 6px;">रंग संकेतक:</span>
+        <span style="background: #63be7b; color: #000; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 12px; margin-right: 4px;">🟢 1-15 (हरा)</span>
+        <span style="background: #ffa726; color: #000; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 12px; margin-right: 4px;">🟠 16-25 (नारंगी)</span>
+        <span style="background: #f8696b; color: #000; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 12px;">🔴 26-41 (लाल)</span>
+    </div>""", unsafe_allow_html=True)
 
 with dsumm_col_d:
     if st.session_state.get("dist_summary_chosen_district") not in pure_district_list:
@@ -932,8 +974,7 @@ def render_interactive_summary_table(df_t, dist_name, total_dist_count):
         
         # Rank Entries
         r_ent = int(r['रैंक-प्रविष्टि'])
-        ratio_ent = (r_ent - 1) / (total_dist_count - 1) if total_dist_count > 1 else 0.0
-        bg_ent = pdf_generator.get_rank_3color(ratio_ent)
+        bg_ent = pdf_generator.get_district_rank_color(r_ent)
         tds.append(f'<td style="text-align: center; font-weight: {f_weight}; background-color: {bg_ent}; color: #000; border: 1px solid #CBD5E1;">{r_ent}</td>')
         
         # Participants
@@ -941,8 +982,7 @@ def render_interactive_summary_table(df_t, dist_name, total_dist_count):
         
         # Rank Participants
         r_part = int(r['रैंक-प्रतिभागी'])
-        ratio_part = (r_part - 1) / (total_dist_count - 1) if total_dist_count > 1 else 0.0
-        bg_part = pdf_generator.get_rank_3color(ratio_part)
+        bg_part = pdf_generator.get_district_rank_color(r_part)
         tds.append(f'<td style="text-align: center; font-weight: {f_weight}; background-color: {bg_part}; color: #000; border: 1px solid #CBD5E1;">{r_part}</td>')
         
         # Photos
@@ -950,8 +990,7 @@ def render_interactive_summary_table(df_t, dist_name, total_dist_count):
         
         # Rank Photos
         r_photo = int(r['रैंक-फोटो'])
-        ratio_photo = (r_photo - 1) / (total_dist_count - 1) if total_dist_count > 1 else 0.0
-        bg_photo = pdf_generator.get_rank_3color(ratio_photo)
+        bg_photo = pdf_generator.get_district_rank_color(r_photo)
         tds.append(f'<td style="text-align: center; font-weight: {f_weight}; background-color: {bg_photo}; color: #000; border: 1px solid #CBD5E1;">{r_photo}</td>')
         
         # Videos
@@ -959,8 +998,7 @@ def render_interactive_summary_table(df_t, dist_name, total_dist_count):
         
         # Rank Videos
         r_vid = int(r['रैंक-वीडियो'])
-        ratio_vid = (r_vid - 1) / (total_dist_count - 1) if total_dist_count > 1 else 0.0
-        bg_vid = pdf_generator.get_rank_3color(ratio_vid)
+        bg_vid = pdf_generator.get_district_rank_color(r_vid)
         tds.append(f'<td style="text-align: center; font-weight: {f_weight}; background-color: {bg_vid}; color: #000; border: 1px solid #CBD5E1;">{r_vid}</td>')
 
         rows_html.append(f'<tr>{"".join(tds)}</tr>')
@@ -1002,8 +1040,14 @@ st.html(render_interactive_summary_table(df_dist_summary, chosen_summ_dist, all_
 st.markdown("---")
 b_col_t, b_col_d = st.columns([2.2, 1.8])
 with b_col_t:
-    st.subheader("🏘️ ब्लॉक स्तरीय इवेंट रैंकिंग रिपोर्ट")
-    st.caption("💡 प्रत्येक ब्लॉक की पूरे राजस्थान राज्य के 450+ ब्लॉकों में मूल राज्य रैंकिंग (Statewide Rank) एवं इवेंटवार प्रदर्शन")
+    st.subheader("🏘️ ब्लॉक स्तरीय इवेंट रैंकिंग रिपोर्ट (राज्य के कुल 457 ब्लॉक)")
+    st.caption("💡 प्रत्येक ब्लॉक की पूरे राजस्थान राज्य के कुल 457 ब्लॉकों (41 जिलों के ब्लॉक) में मूल राज्य रैंकिंग (Statewide Rank) एवं इवेंटवार प्रदर्शन")
+    st.markdown("""<div style="margin-top: 4px; margin-bottom: 8px;">
+        <span style="font-size: 13px; font-weight: 700; color: #1e293b; margin-right: 6px;">रंग संकेतक:</span>
+        <span style="background: #63be7b; color: #000; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 12px; margin-right: 4px;">🟢 1-110 (हरा)</span>
+        <span style="background: #ffa726; color: #000; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 12px; margin-right: 4px;">🟠 111-200 (नारंगी)</span>
+        <span style="background: #f8696b; color: #000; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 12px;">🔴 201-अंतिम (लाल)</span>
+    </div>""", unsafe_allow_html=True)
 
 with b_col_d:
     if st.session_state.get("block_report_chosen_district") not in pure_district_list:
@@ -1094,8 +1138,6 @@ with b_view_col1:
 def render_interactive_block_table(tbl_info):
     t_title = tbl_info["title"]
     df_t = tbl_info["df"]
-    rank_cols = ['राज्य-रैंक-प्रविष्टि', 'राज्य-रैंक-प्रतिभागी', 'राज्य-रैंक-फोटो', 'राज्य-रैंक-वीडियो']
-    col_min_max = {rc: (df_t[rc].min(), df_t[rc].max()) for rc in rank_cols}
 
     rows_html = []
     for _, r in df_t.iterrows():
@@ -1104,38 +1146,31 @@ def render_interactive_block_table(tbl_info):
         cells.append(f'<td style="text-align: left; font-weight: 600; padding-left: 10px; width: 110px; border: 1px solid #CBD5E1;">{r["ब्लॉक"]}</td>')
         cells.append(f'<td style="text-align: center; width: 80px; border: 1px solid #CBD5E1;">{r["प्रविष्टि"]:,}</td>')
 
-        min_v, max_v = col_min_max['राज्य-रैंक-प्रविष्टि']
-        ratio = (r['राज्य-रैंक-प्रविष्टि'] - min_v) / (max_v - min_v) if max_v > min_v else 0.0
-        bg = pdf_generator.get_rank_3color(ratio)
-        cells.append(f'<td style="text-align: center; background-color: {bg}; color: #000; font-weight: 600; width: 90px; border: 1px solid #CBD5E1;">{r["राज्य-रैंक-प्रविष्टि"]}</td>')
+        bg_ent = pdf_generator.get_block_rank_color(r['राज्य-रैंक-प्रविष्टि'])
+        cells.append(f'<td style="text-align: center; background-color: {bg_ent}; color: #000; font-weight: 600; width: 90px; border: 1px solid #CBD5E1;">{r["राज्य-रैंक-प्रविष्टि"]}</td>')
 
         cells.append(f'<td style="text-align: center; width: 90px; border: 1px solid #CBD5E1;">{r["प्रतिभागी"]:,}</td>')
 
-        min_v, max_v = col_min_max['राज्य-रैंक-प्रतिभागी']
-        ratio = (r['राज्य-रैंक-प्रतिभागी'] - min_v) / (max_v - min_v) if max_v > min_v else 0.0
-        bg = pdf_generator.get_rank_3color(ratio)
-        cells.append(f'<td style="text-align: center; background-color: {bg}; color: #000; font-weight: 600; width: 90px; border: 1px solid #CBD5E1;">{r["राज्य-रैंक-प्रतिभागी"]}</td>')
+        bg_part = pdf_generator.get_block_rank_color(r['राज्य-रैंक-प्रतिभागी'])
+        cells.append(f'<td style="text-align: center; background-color: {bg_part}; color: #000; font-weight: 600; width: 90px; border: 1px solid #CBD5E1;">{r["राज्य-रैंक-प्रतिभागी"]}</td>')
 
         cells.append(f'<td style="text-align: center; width: 80px; border: 1px solid #CBD5E1;">{r["फोटो"]:,}</td>')
 
-        min_v, max_v = col_min_max['राज्य-रैंक-फोटो']
-        ratio = (r['राज्य-रैंक-फोटो'] - min_v) / (max_v - min_v) if max_v > min_v else 0.0
-        bg = pdf_generator.get_rank_3color(ratio)
-        cells.append(f'<td style="text-align: center; background-color: {bg}; color: #000; font-weight: 600; width: 90px; border: 1px solid #CBD5E1;">{r["राज्य-रैंक-फोटो"]}</td>')
+        bg_photo = pdf_generator.get_block_rank_color(r['राज्य-रैंक-फोटो'])
+        cells.append(f'<td style="text-align: center; background-color: {bg_photo}; color: #000; font-weight: 600; width: 90px; border: 1px solid #CBD5E1;">{r["राज्य-रैंक-फोटो"]}</td>')
 
         cells.append(f'<td style="text-align: center; width: 80px; border: 1px solid #CBD5E1;">{r["वीडियो"]:,}</td>')
 
-        min_v, max_v = col_min_max['राज्य-रैंक-वीडियो']
-        ratio = (r['राज्य-रैंक-वीडियो'] - min_v) / (max_v - min_v) if max_v > min_v else 0.0
-        bg = pdf_generator.get_rank_3color(ratio)
-        cells.append(f'<td style="text-align: center; background-color: {bg}; color: #000; font-weight: 600; width: 90px; border: 1px solid #CBD5E1;">{r["राज्य-रैंक-वीडियो"]}</td>')
+        bg_vid = pdf_generator.get_block_rank_color(r['राज्य-रैंक-वीडियो'])
+        cells.append(f'<td style="text-align: center; background-color: {bg_vid}; color: #000; font-weight: 600; width: 90px; border: 1px solid #CBD5E1;">{r["राज्य-रैंक-वीडियो"]}</td>')
 
         rows_html.append(f'<tr>{"".join(cells)}</tr>')
 
     tbl_markup = f'''
     <div style="margin-bottom: 22px; background: white; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); overflow: hidden; border: 1px solid #CBD5E1;">
-        <div style="background: #F1F5F9; padding: 10px 14px; font-weight: 800; font-size: 1.05rem; color: #1F4D77; border-bottom: 2px solid #1F4D77;">
-            📁 {t_title}
+        <div style="background: #F1F5F9; padding: 10px 14px; font-weight: 800; font-size: 1.05rem; color: #1F4D77; border-bottom: 2px solid #1F4D77; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+            <span>📁 {t_title}</span>
+            <span style="font-size: 0.82rem; font-weight: 600; color: #475569; background: #E2E8F0; padding: 2px 8px; border-radius: 4px;">राज्य के कुल 457 ब्लॉकों में से रैंक</span>
         </div>
         <div style="overflow-x: auto;">
             <table style="width: 100%; border-collapse: collapse; font-size: 0.92rem;">
@@ -1170,6 +1205,184 @@ else:
     selected_tbl_title = st.selectbox("इवेंट टेबल चुनें:", options=tbl_titles, key="blk_single_tbl_select")
     selected_tbl = next((t for t in block_tables if t["title"] == selected_tbl_title), block_tables[0])
     st.html(render_interactive_block_table(selected_tbl))
+
+
+# ==========================================
+# 🏛️ निकाय स्तरीय इवेंट रैंकिंग रिपोर्ट (NIKAY-WISE REPORT - COLUMN D)
+# ==========================================
+st.markdown("---")
+n_col_t, n_col_d = st.columns([2.2, 1.8])
+with n_col_t:
+    st.subheader("🏛️ निकाय स्तरीय इवेंट रैंकिंग रिपोर्ट (राज्य के कुल 309 निकाय — कॉलम D)")
+    st.caption("💡 प्रत्येक निकाय (Urban Local Body) की पूरे राजस्थान राज्य के कुल 309 निकायों में मूल राज्य रैंकिंग (Statewide Rank) एवं इवेंटवार प्रदर्शन")
+    st.markdown("""<div style="margin-top: 4px; margin-bottom: 8px;">
+        <span style="font-size: 13px; font-weight: 700; color: #1e293b; margin-right: 6px;">रंग संकेतक:</span>
+        <span style="background: #63be7b; color: #000; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 12px; margin-right: 4px;">🟢 1-90 (हरा)</span>
+        <span style="background: #ffa726; color: #000; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 12px; margin-right: 4px;">🟠 91-190 (नारंगी)</span>
+        <span style="background: #f8696b; color: #000; padding: 2px 8px; border-radius: 4px; font-weight: 600; font-size: 12px;">🔴 191-अंतिम (लाल)</span>
+    </div>""", unsafe_allow_html=True)
+
+with n_col_d:
+    if st.session_state.get("nikay_report_chosen_district") not in pure_district_list:
+        st.session_state["nikay_report_chosen_district"] = st.session_state.get("app_selected_district", default_district)
+    
+    chosen_nikay_dist = st.selectbox(
+        "निकाय रिपोर्ट हेतु जिला चुनें (Select District):",
+        options=pure_district_list,
+        key="nikay_report_chosen_district",
+        on_change=on_nikay_district_change
+    )
+
+# Compute tables for chosen district
+nikay_tables = pdf_generator.compute_nikay_wise_tables(
+    raw_df=raw_df,
+    target_district=chosen_nikay_dist,
+    categories=selected_categories if selected_categories else all_categories
+)
+
+# Nikay Report Action & Export Buttons
+st.markdown(f"##### 📥 जिला {chosen_nikay_dist} निकाय रिपोर्ट निर्यात एवं प्रिंट:")
+n_exp1, n_exp2, n_exp3 = st.columns([1.2, 1.2, 1.2])
+with n_exp1:
+    n_pdf_key = f"cached_npdf_{chosen_nikay_dist}"
+    btn_npdf = st.button(f"⚡ {chosen_nikay_dist} निकाय PDF तैयार करें", width="stretch", key=f"btn_p_npdf_{chosen_nikay_dist}")
+    if btn_npdf or st.session_state.get(n_pdf_key):
+        if btn_npdf:
+            with st.spinner("निकाय PDF तैयार हो रही है..."):
+                st.session_state[n_pdf_key] = pdf_generator.create_nikay_wise_pdf(
+                    raw_df=raw_df,
+                    target_district=chosen_nikay_dist,
+                    categories=selected_categories if selected_categories else all_categories
+                )
+        st.download_button(
+            label=f"⬇️ {chosen_nikay_dist} निकाय PDF डाउनलोड करें",
+            data=st.session_state[n_pdf_key],
+            file_name=f"VBSJA_Nikay_Ranking_{chosen_nikay_dist}_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+            mime="application/pdf",
+            width="stretch",
+            key=f"btn_dl_sec_nikay_pdf_{chosen_nikay_dist}"
+        )
+    else:
+        st.caption("👈 बटन दबाकर निकाय PDF तैयार करें")
+
+with n_exp2:
+    n_xl_key = f"cached_nxl_{chosen_nikay_dist}"
+    btn_nxl = st.button(f"⚡ {chosen_nikay_dist} निकाय Excel तैयार करें", width="stretch", key=f"btn_p_nxl_{chosen_nikay_dist}")
+    if btn_nxl or st.session_state.get(n_xl_key):
+        if btn_nxl:
+            with st.spinner("निकाय Excel तैयार हो रहा है..."):
+                st.session_state[n_xl_key] = pdf_generator.create_nikay_wise_excel(
+                    raw_df=raw_df,
+                    target_district=chosen_nikay_dist,
+                    categories=selected_categories if selected_categories else all_categories
+                )
+        st.download_button(
+            label=f"⬇️ {chosen_nikay_dist} निकाय Excel डाउनलोड करें",
+            data=st.session_state[n_xl_key],
+            file_name=f"VBSJA_Nikay_Ranking_{chosen_nikay_dist}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            width="stretch",
+            key=f"btn_dl_sec_nikay_excel_{chosen_nikay_dist}"
+        )
+    else:
+        st.caption("👈 बटन दबाकर निकाय Excel तैयार करें")
+
+with n_exp3:
+    with st.popover(f"🖨️ {chosen_nikay_dist} निकाय प्रिंट प्रिव्यू", width="stretch"):
+        st.markdown(f"### 🖨️ जिला {chosen_nikay_dist} — निकाय रिपोर्ट प्रिंट")
+        st.caption("नीचे दिए गए बटन से सीधे प्रिंट करें अथवा ब्राउज़र के 'Save as PDF' विकल्प का उपयोग करें (Portrait A4):")
+        sec_nikay_print_html = pdf_generator.generate_nikay_wise_printable_html(
+            raw_df=raw_df,
+            target_district=chosen_nikay_dist,
+            categories=selected_categories if selected_categories else all_categories
+        )
+        components.html(sec_nikay_print_html, height=520, scrolling=True)
+
+# Display options: All tables at once vs individual dropdown
+n_view_col1, n_view_col2 = st.columns([1.5, 2.5])
+with n_view_col1:
+    n_view_mode = st.radio(
+        "प्रदर्शित करने का प्रारूप (निकाय):",
+        options=["📋 सभी टेबल एक साथ (All in One View)", "🔍 इवेंट अनुसार अलग-अलग देखें"],
+        horizontal=True,
+        key="nikay_view_mode_toggle"
+    )
+
+def render_interactive_nikay_table(tbl_info):
+    t_title = tbl_info["title"]
+    df_t = tbl_info["df"]
+    if df_t.empty:
+        return f'<div style="padding: 15px; color: #64748B;">चयनित इवेंट में जिला {chosen_nikay_dist} के किसी निकाय का डेटा उपलब्ध नहीं है।</div>'
+
+    rows_html = []
+    for _, r in df_t.iterrows():
+        cells = []
+        cells.append(f'<td style="text-align: center; font-weight: 600; width: 40px; border: 1px solid #CBD5E1; padding: 6px 4px;">{r["क्र.सं."]}</td>')
+        cells.append(f'<td style="text-align: left; font-weight: 600; padding-left: 10px; width: 110px; border: 1px solid #CBD5E1;">{r["निकाय"]}</td>')
+        cells.append(f'<td style="text-align: center; width: 80px; border: 1px solid #CBD5E1;">{r["प्रविष्टि"]:,}</td>')
+
+        bg_ent = pdf_generator.get_nikay_rank_color(r['राज्य-रैंक-प्रविष्टि'])
+        cells.append(f'<td style="text-align: center; background-color: {bg_ent}; color: #000; font-weight: 600; width: 90px; border: 1px solid #CBD5E1;">{r["राज्य-रैंक-प्रविष्टि"]}</td>')
+
+        cells.append(f'<td style="text-align: center; width: 90px; border: 1px solid #CBD5E1;">{r["प्रतिभागी"]:,}</td>')
+
+        bg_part = pdf_generator.get_nikay_rank_color(r['राज्य-रैंक-प्रतिभागी'])
+        cells.append(f'<td style="text-align: center; background-color: {bg_part}; color: #000; font-weight: 600; width: 90px; border: 1px solid #CBD5E1;">{r["राज्य-रैंक-प्रतिभागी"]}</td>')
+
+        cells.append(f'<td style="text-align: center; width: 80px; border: 1px solid #CBD5E1;">{r["फोटो"]:,}</td>')
+
+        bg_photo = pdf_generator.get_nikay_rank_color(r['राज्य-रैंक-फोटो'])
+        cells.append(f'<td style="text-align: center; background-color: {bg_photo}; color: #000; font-weight: 600; width: 90px; border: 1px solid #CBD5E1;">{r["राज्य-रैंक-फोटो"]}</td>')
+
+        cells.append(f'<td style="text-align: center; width: 80px; border: 1px solid #CBD5E1;">{r["वीडियो"]:,}</td>')
+
+        bg_vid = pdf_generator.get_nikay_rank_color(r['राज्य-रैंक-वीडियो'])
+        cells.append(f'<td style="text-align: center; background-color: {bg_vid}; color: #000; font-weight: 600; width: 90px; border: 1px solid #CBD5E1;">{r["राज्य-रैंक-वीडियो"]}</td>')
+
+        rows_html.append(f'<tr>{"".join(cells)}</tr>')
+
+    tbl_markup = f'''
+    <div style="margin-bottom: 22px; background: white; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); overflow: hidden; border: 1px solid #CBD5E1;">
+        <div style="background: #F1F5F9; padding: 10px 14px; font-weight: 800; font-size: 1.05rem; color: #1F4D77; border-bottom: 2px solid #1F4D77; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+            <span>🏛️ {t_title}</span>
+            <span style="font-size: 0.82rem; font-weight: 600; color: #475569; background: #E2E8F0; padding: 2px 8px; border-radius: 4px;">राज्य के कुल 309 निकायों में से रैंक</span>
+        </div>
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.92rem;">
+                <thead>
+                    <tr style="background-color: #1F4D77; color: white;">
+                        <th style="padding: 9px 4px; text-align: center; border: 1px solid #1F4D77; width: 40px;">क्र.सं.</th>
+                        <th style="padding: 9px 6px; text-align: left; border: 1px solid #1F4D77; padding-left: 10px; width: 110px;">निकाय</th>
+                        <th style="padding: 9px 4px; text-align: center; border: 1px solid #1F4D77; width: 80px;">प्रविष्टि</th>
+                        <th style="padding: 9px 4px; text-align: center; border: 1px solid #1F4D77; width: 90px;">राज्य-रैंक-<br>प्रविष्टि</th>
+                        <th style="padding: 9px 4px; text-align: center; border: 1px solid #1F4D77; width: 90px;">प्रतिभागी</th>
+                        <th style="padding: 9px 4px; text-align: center; border: 1px solid #1F4D77; width: 90px;">राज्य-रैंक-<br>प्रतिभागी</th>
+                        <th style="padding: 9px 4px; text-align: center; border: 1px solid #1F4D77; width: 80px;">फोटो</th>
+                        <th style="padding: 9px 4px; text-align: center; border: 1px solid #1F4D77; width: 90px;">राज्य-रैंक-<br>फोटो</th>
+                        <th style="padding: 9px 4px; text-align: center; border: 1px solid #1F4D77; width: 80px;">वीडियो</th>
+                        <th style="padding: 9px 4px; text-align: center; border: 1px solid #1F4D77; width: 90px;">राज्य-रैंक-<br>वीडियो</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {"".join(rows_html)}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    '''
+    return tbl_markup
+
+if nikay_tables and not nikay_tables[0]["df"].empty:
+    if "सभी" in n_view_mode:
+        for t_item in nikay_tables:
+            st.html(render_interactive_nikay_table(t_item))
+    else:
+        n_tbl_titles = [t["title"] for t in nikay_tables]
+        selected_n_title = st.selectbox("इवेंट टेबल चुनें (निकाय):", options=n_tbl_titles, key="nikay_single_tbl_select")
+        selected_n_tbl = next((t for t in nikay_tables if t["title"] == selected_n_title), nikay_tables[0])
+        st.html(render_interactive_nikay_table(selected_n_tbl))
+else:
+    st.info(f"जिला {chosen_nikay_dist} हेतु कोई निकाय डेटा उपलब्ध नहीं है।")
 
 
 # ==========================================

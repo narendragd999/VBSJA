@@ -101,6 +101,23 @@ def render_html_to_pdf(html_content: str) -> bytes:
 
     return None
 
+def extract_column_m_timestamp(df: pd.DataFrame) -> str:
+    """
+    Extracts timestamp from Column M (index 12) of Google Sheets if present.
+    """
+    if df is None:
+        return None
+    if len(df.columns) > 12:
+        col_m_name = str(df.columns[12]).strip()
+        first_vals = df.iloc[:, 12].dropna()
+        if not first_vals.empty:
+            v = str(first_vals.iloc[0]).strip()
+            if v and v.lower() not in ['', 'nan', 'none']:
+                return v
+        if col_m_name and not col_m_name.startswith('Unnamed:') and col_m_name.lower() not in ['', 'nan', 'none']:
+            return col_m_name
+    return None
+
 # ==========================================
 # 1. DISTRICT RANKING REPORT PDF
 # ==========================================
@@ -109,7 +126,10 @@ def generate_district_pdf_html(df: pd.DataFrame, title: str, subtitle: str) -> s
     is_landscape = len(df.columns) > 6
     orientation = "landscape" if is_landscape else "portrait"
     
+    col_m_ts = extract_column_m_timestamp(df)
     sub_text = f"रिपोर्ट दिनांक व समय: {curr_time} | कुल रिकॉर्ड: {len(df):,}"
+    if col_m_ts:
+        sub_text += f" | डेटा टाइमस्टैम्प (Col M): {col_m_ts}"
     if subtitle:
         sub_text += f" | {subtitle}"
         
@@ -1564,6 +1584,61 @@ def get_rank_3color(ratio: float) -> str:
         b = int(132 + (107 - 132) * r2)
     return f"#{r:02x}{g:02x}{b:02x}"
 
+def get_district_rank_color(rank) -> str:
+    """
+    District rank color coding (requested by user):
+    1 - 15  : Green (#63be7b)
+    16 - 25 : Orange (#ffa726)
+    26 - 41 : Red (#f8696b)
+    """
+    try:
+        r = int(rank)
+    except (ValueError, TypeError):
+        return "#ffffff"
+    if r <= 15:
+        return "#63be7b"
+    elif r <= 25:
+        return "#ffa726"
+    else:
+        return "#f8696b"
+
+def get_block_rank_color(rank) -> str:
+    """
+    Block rank color coding (requested by user):
+    1 - 110    : Green (#63be7b)
+    111 - 200  : Orange (#ffa726)
+    201 - last : Red (#f8696b)
+    """
+    try:
+        r = int(rank)
+    except (ValueError, TypeError):
+        return "#ffffff"
+    if r <= 110:
+        return "#63be7b"
+    elif r <= 200:
+        return "#ffa726"
+    else:
+        return "#f8696b"
+
+def get_nikay_rank_color(rank) -> str:
+    """
+    Nikay rank color coding (requested by user):
+    1 - 90     : Green (#63be7b)
+    91 - 190   : Orange (#ffa726)
+    191 - last : Red (#f8696b)
+    """
+    try:
+        r = int(rank)
+    except (ValueError, TypeError):
+        return "#ffffff"
+    if r <= 90:
+        return "#63be7b"
+    elif r <= 190:
+        return "#ffa726"
+    else:
+        return "#f8696b"
+
+
 @st.cache_data(show_spinner=False, max_entries=50)
 def compute_block_wise_tables(raw_df: pd.DataFrame, target_district: str, categories: list = None):
     """
@@ -1653,6 +1728,10 @@ def compute_block_wise_tables(raw_df: pd.DataFrame, target_district: str, catego
 
 def generate_block_wise_pdf_html(raw_df: pd.DataFrame, target_district: str, categories: list = None) -> str:
     curr_time = datetime.now().strftime("%d/%m/%Y %I:%M %p")
+    col_m_ts = extract_column_m_timestamp(raw_df)
+    date_display = f"दिनांक {curr_time}"
+    if col_m_ts:
+        date_display += f" | डेटा टाइमस्टैम्प: {col_m_ts}"
     tables = compute_block_wise_tables(raw_df, target_district, categories)
 
     def _render_tbl_html(title, tbl_df):
@@ -1669,34 +1748,26 @@ def generate_block_wise_pdf_html(raw_df: pd.DataFrame, target_district: str, cat
             tds.append(f'<td style="width: 55px;">{row["प्रविष्टि"]:,}</td>')
 
             # rank ent
-            min_v, max_v = col_min_max['राज्य-रैंक-प्रविष्टि']
-            ratio = (row['राज्य-रैंक-प्रविष्टि'] - min_v) / (max_v - min_v) if max_v > min_v else 0.0
-            bg = get_rank_3color(ratio)
-            tds.append(f'<td style="width: 70px; background-color: {bg}; color: #000; font-weight: 500;">{row["राज्य-रैंक-प्रविष्टि"]}</td>')
+            bg_ent = get_block_rank_color(row['राज्य-रैंक-प्रविष्टि'])
+            tds.append(f'<td style="width: 70px; background-color: {bg_ent}; color: #000; font-weight: 600;">{row["राज्य-रैंक-प्रविष्टि"]}</td>')
 
             tds.append(f'<td style="width: 60px;">{row["प्रतिभागी"]:,}</td>')
 
             # rank part
-            min_v, max_v = col_min_max['राज्य-रैंक-प्रतिभागी']
-            ratio = (row['राज्य-रैंक-प्रतिभागी'] - min_v) / (max_v - min_v) if max_v > min_v else 0.0
-            bg = get_rank_3color(ratio)
-            tds.append(f'<td style="width: 70px; background-color: {bg}; color: #000; font-weight: 500;">{row["राज्य-रैंक-प्रतिभागी"]}</td>')
+            bg_part = get_block_rank_color(row['राज्य-रैंक-प्रतिभागी'])
+            tds.append(f'<td style="width: 70px; background-color: {bg_part}; color: #000; font-weight: 600;">{row["राज्य-रैंक-प्रतिभागी"]}</td>')
 
             tds.append(f'<td style="width: 50px;">{row["फोटो"]:,}</td>')
 
             # rank photo
-            min_v, max_v = col_min_max['राज्य-रैंक-फोटो']
-            ratio = (row['राज्य-रैंक-फोटो'] - min_v) / (max_v - min_v) if max_v > min_v else 0.0
-            bg = get_rank_3color(ratio)
-            tds.append(f'<td style="width: 65px; background-color: {bg}; color: #000; font-weight: 500;">{row["राज्य-रैंक-फोटो"]}</td>')
+            bg_photo = get_block_rank_color(row['राज्य-रैंक-फोटो'])
+            tds.append(f'<td style="width: 65px; background-color: {bg_photo}; color: #000; font-weight: 600;">{row["राज्य-रैंक-फोटो"]}</td>')
 
             tds.append(f'<td style="width: 50px;">{row["वीडियो"]:,}</td>')
 
             # rank video
-            min_v, max_v = col_min_max['राज्य-रैंक-वीडियो']
-            ratio = (row['राज्य-रैंक-वीडियो'] - min_v) / (max_v - min_v) if max_v > min_v else 0.0
-            bg = get_rank_3color(ratio)
-            tds.append(f'<td style="width: 65px; background-color: {bg}; color: #000; font-weight: 500;">{row["राज्य-रैंक-वीडियो"]}</td>')
+            bg_vid = get_block_rank_color(row['राज्य-रैंक-वीडियो'])
+            tds.append(f'<td style="width: 65px; background-color: {bg_vid}; color: #000; font-weight: 600;">{row["राज्य-रैंक-वीडियो"]}</td>')
 
             tbody_rows.append('<tr>' + ''.join(tds) + '</tr>')
 
@@ -1733,8 +1804,8 @@ def generate_block_wise_pdf_html(raw_df: pd.DataFrame, target_district: str, cat
         p_html = f'''
         <div class="report-page">
             <div class="page-header">
-                <h1>जिला {target_district} — ब्लॉक स्तरीय रैंकिंग (राज्य के सभी जिलों के ब्लॉक में से)</h1>
-                <p>दिनांक {curr_time}</p>
+                <h1>जिला {target_district} — ब्लॉक स्तरीय रैंकिंग (राज्य के कुल 457 ब्लॉकों में से)</h1>
+                <p>{date_display}</p>
             </div>
             {''.join(tbl_htmls)}
         </div>
@@ -1911,7 +1982,7 @@ def _create_block_wise_pdf_reportlab(raw_df: pd.DataFrame, target_district: str,
         if idx % 4 == 0:
             if idx > 0:
                 elements.append(PageBreak())
-            elements.append(Paragraph(f"जिला {target_district} — ब्लॉक स्तरीय रैंकिंग (राज्य के सभी जिलों के ब्लॉक में से)", header_style))
+            elements.append(Paragraph(f"जिला {target_district} — ब्लॉक स्तरीय रैंकिंग (राज्य के कुल 457 ब्लॉकों में से)", header_style))
             elements.append(Paragraph(f"दिनांक {curr_time}", sub_style))
             elements.append(Spacer(1, 6))
 
@@ -1962,9 +2033,7 @@ def _create_block_wise_pdf_reportlab(raw_df: pd.DataFrame, target_district: str,
 
             # Conditional colors on rank columns: col index 3, 5, 7, 9
             for col_idx, rc in [(3, 'राज्य-रैंक-प्रविष्टि'), (5, 'राज्य-रैंक-प्रतिभागी'), (7, 'राज्य-रैंक-फोटो'), (9, 'राज्य-रैंक-वीडियो')]:
-                min_v, max_v = col_min_max[rc]
-                ratio = (row[rc] - min_v) / (max_v - min_v) if max_v > min_v else 0.0
-                bg = get_rank_3color(ratio)
+                bg = get_block_rank_color(row[rc])
                 t_styles.append(('BACKGROUND', (col_idx, r_idx), (col_idx, r_idx), colors.HexColor(bg)))
 
         col_w = [28, 70, 52, 60, 55, 60, 48, 58, 48, 58]
@@ -1984,7 +2053,7 @@ def generate_block_wise_printable_html(raw_df: pd.DataFrame, target_district: st
     # Inject print toolbar at top of body
     toolbar = f'''
     <div style="position: sticky; top: 0; background: #1f4d77; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; z-index: 1000; box-shadow: 0 3px 8px rgba(0,0,0,0.2); border-radius: 6px; margin: 10px 12px 14px 12px;">
-        <span style="font-weight: 700; font-size: 15px;">🖨️ ब्लॉक स्तरीय रैंकिंग रिपोर्ट प्रिव्यू (जिला: {target_district})</span>
+        <span style="font-weight: 700; font-size: 15px;">🖨️ ब्लॉक स्तरीय रैंकिंग रिपोर्ट प्रिव्यू (जिला: {target_district} | राज्य के कुल 457 ब्लॉक)</span>
         <button onclick="window.print()" style="background: #f59e0b; color: #111827; font-weight: 700; border: none; padding: 7px 18px; border-radius: 5px; cursor: pointer; font-size: 14px;">
             🖨️ अभी प्रिंट करें / Save as PDF
         </button>
@@ -2023,7 +2092,7 @@ def create_block_wise_excel(raw_df: pd.DataFrame, target_district: str, categori
     curr_row = 1
     # Report Main Title
     ws.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=10)
-    top_cell = ws.cell(row=curr_row, column=1, value=f"जिला {target_district} — ब्लॉक स्तरीय रैंकिंग (राज्य के सभी जिलों के ब्लॉक में से)")
+    top_cell = ws.cell(row=curr_row, column=1, value=f"जिला {target_district} — ब्लॉक स्तरीय रैंकिंग (राज्य के कुल 457 ब्लॉकों में से)")
     top_cell.font = Font(name="Calibri", size=13, bold=True, color="1F4D77")
     top_cell.alignment = center_align
     curr_row += 1
@@ -2063,9 +2132,7 @@ def create_block_wise_excel(raw_df: pd.DataFrame, target_district: str, categori
 
                 # Apply conditional formatting on rank columns
                 if col_name in rank_cols:
-                    min_v, max_v = col_min_max[col_name]
-                    ratio = (val - min_v) / (max_v - min_v) if max_v > min_v else 0.0
-                    hex_color = get_rank_3color(ratio).replace('#', '')
+                    hex_color = get_block_rank_color(val).replace('#', '')
                     cell.fill = PatternFill(start_color=hex_color, end_color=hex_color, fill_type="solid")
             curr_row += 1
 
@@ -2229,7 +2296,11 @@ def generate_district_event_summary_pdf_html(raw_df: pd.DataFrame, target_distri
     """
     df_res = compute_district_event_summary_table(raw_df, target_district, categories)
     curr_time = datetime.now().strftime("%d/%m/%Y %I:%M %p")
-    title = custom_title or f"जिला {target_district} — सभी इवेंट केटेगरी में रैंक दिनांक {curr_time}"
+    col_m_ts = extract_column_m_timestamp(raw_df)
+    date_display = f"दिनांक {curr_time}"
+    if col_m_ts:
+        date_display += f" (डेटा टाइमस्टैम्प: {col_m_ts})"
+    title = custom_title or f"जिला {target_district} — सभी इवेंट केटेगरी में रैंक {date_display}"
 
     # Total districts in state for rank normalization (41)
     all_dist_count = max(1, len(raw_df['जिला'].dropna().unique()))
@@ -2247,10 +2318,9 @@ def generate_district_event_summary_pdf_html(raw_df: pd.DataFrame, target_distri
         # 2. Entries
         tds.append(f'<td style="text-align: center; font-weight: {f_weight}; background-color: {row_bg};">{row["प्रविष्टि"]:,}</td>')
 
-        # 3. Rank entries (with 3-color)
+        # 3. Rank entries
         r_ent = int(row['रैंक-प्रविष्टि'])
-        ratio_ent = (r_ent - 1) / (all_dist_count - 1) if all_dist_count > 1 else 0.0
-        bg_ent = get_rank_3color(ratio_ent)
+        bg_ent = get_district_rank_color(r_ent)
         tds.append(f'<td style="text-align: center; font-weight: {f_weight}; background-color: {bg_ent}; color: #000;">{r_ent}</td>')
 
         # 4. Participants
@@ -2258,8 +2328,7 @@ def generate_district_event_summary_pdf_html(raw_df: pd.DataFrame, target_distri
 
         # 5. Rank participants
         r_part = int(row['रैंक-प्रतिभागी'])
-        ratio_part = (r_part - 1) / (all_dist_count - 1) if all_dist_count > 1 else 0.0
-        bg_part = get_rank_3color(ratio_part)
+        bg_part = get_district_rank_color(r_part)
         tds.append(f'<td style="text-align: center; font-weight: {f_weight}; background-color: {bg_part}; color: #000;">{r_part}</td>')
 
         # 6. Photos
@@ -2267,8 +2336,7 @@ def generate_district_event_summary_pdf_html(raw_df: pd.DataFrame, target_distri
 
         # 7. Rank photos
         r_photo = int(row['रैंक-फोटो'])
-        ratio_photo = (r_photo - 1) / (all_dist_count - 1) if all_dist_count > 1 else 0.0
-        bg_photo = get_rank_3color(ratio_photo)
+        bg_photo = get_district_rank_color(r_photo)
         tds.append(f'<td style="text-align: center; font-weight: {f_weight}; background-color: {bg_photo}; color: #000;">{r_photo}</td>')
 
         # 8. Videos
@@ -2276,8 +2344,7 @@ def generate_district_event_summary_pdf_html(raw_df: pd.DataFrame, target_distri
 
         # 9. Rank videos
         r_vid = int(row['रैंक-वीडियो'])
-        ratio_vid = (r_vid - 1) / (all_dist_count - 1) if all_dist_count > 1 else 0.0
-        bg_vid = get_rank_3color(ratio_vid)
+        bg_vid = get_district_rank_color(r_vid)
         tds.append(f'<td style="text-align: center; font-weight: {f_weight}; background-color: {bg_vid}; color: #000;">{r_vid}</td>')
 
         tbody_rows.append(f'<tr>{"".join(tds)}</tr>')
@@ -2501,9 +2568,7 @@ def create_district_event_summary_pdf(raw_df: pd.DataFrame, target_district: str
 
         # Conditional rank coloring on columns 2, 4, 6, 8
         for col_idx, col_name in [(2, 'रैंक-प्रविष्टि'), (4, 'रैंक-प्रतिभागी'), (6, 'रैंक-फोटो'), (8, 'रैंक-वीडियो')]:
-            r_val = int(r[col_name])
-            ratio = (r_val - 1) / (all_dist_count - 1) if all_dist_count > 1 else 0.0
-            hex_bg = get_rank_3color(ratio)
+            hex_bg = get_district_rank_color(r[col_name])
             t_styles.append(('BACKGROUND', (col_idx, r_idx), (col_idx, r_idx), colors.HexColor(hex_bg)))
 
     col_widths = [150, 46, 52, 50, 52, 44, 48, 44, 48]
@@ -2601,9 +2666,7 @@ def create_district_event_summary_excel(raw_df: pd.DataFrame, target_district: s
                 cell.fill = summary_fill
 
             if h in rank_cols:
-                r_val = int(val)
-                ratio = (r_val - 1) / (all_dist_count - 1) if all_dist_count > 1 else 0.0
-                hex_color = get_rank_3color(ratio).replace('#', '')
+                hex_color = get_district_rank_color(val).replace('#', '')
                 cell.fill = PatternFill(start_color=hex_color, end_color=hex_color, fill_type="solid")
 
         curr_row += 1
@@ -2645,4 +2708,510 @@ def create_all_districts_event_summary_zip(raw_df: pd.DataFrame, categories: lis
                     zip_file.writestr(res[0], res[1])
 
     return zip_buffer.getvalue()
+
+
+# ==========================================
+# 6. NIKAY-WISE REPORT (COLUMN D - URBAN LOCAL BODIES)
+# ==========================================
+@st.cache_data(show_spinner=False, max_entries=50)
+def compute_nikay_wise_tables(raw_df: pd.DataFrame, target_district: str, categories: list = None):
+    """
+    Computes Nikay-level (Column D) aggregated tables with statewide ranks across ALL nikays in Rajasthan.
+    Returns list of dicts:
+    [{"title": str, "df": pd.DataFrame, "is_overall": bool}, ...]
+    Each df has columns:
+    ['क्र.सं.', 'निकाय', 'प्रविष्टि', 'राज्य-रैंक-प्रविष्टि', 'प्रतिभागी', 'राज्य-रैंक-प्रतिभागी', 'फोटो', 'राज्य-रैंक-फोटो', 'वीडियो', 'राज्य-रैंक-वीडियो']
+    """
+    df_valid = raw_df.dropna(subset=['निकाय']).copy()
+    df_valid['निकाय'] = df_valid['निकाय'].astype(str).str.strip()
+    df_valid = df_valid[df_valid['निकाय'] != '']
+    df_valid = df_valid[df_valid['निकाय'].str.lower() != 'nan']
+
+    # Standardize photo and video columns
+    if "कुल फोटो की संख्या" not in df_valid.columns and "कुल photo" in df_valid.columns:
+        df_valid["कुल फोटो की संख्या"] = df_valid["कुल photo"]
+    if "कुल वीडियो की संख्या" not in df_valid.columns and "कुल video" in df_valid.columns:
+        df_valid["कुल वीडियो की संख्या"] = df_valid["कुल video"]
+
+    for c in ["कुल की गई प्रविष्टि", "कुल प्रतिभागियों की संख्या", "कुल फोटो की संख्या", "कुल वीडियो की संख्या"]:
+        if c in df_valid.columns:
+            df_valid[c] = pd.to_numeric(df_valid[c], errors='coerce').fillna(0).astype(int)
+        else:
+            df_valid[c] = 0
+
+    all_dist_nikays = df_valid[['जिला', 'निकाय']].drop_duplicates().copy()
+
+    # Determine categories
+    if not categories:
+        cats = [c for c in PREFERRED_BLOCK_CAT_ORDER if c in df_valid['इवेंट केटेगरी'].unique() and c != 'Gramin seva shivir ILR Wise']
+        for c in sorted(df_valid['इवेंट केटेगरी'].dropna().unique()):
+            if str(c).strip() and c not in cats and c != 'Gramin seva shivir ILR Wise':
+                cats.append(c)
+    else:
+        cats = [c for c in PREFERRED_BLOCK_CAT_ORDER if c in categories]
+        for c in categories:
+            if c not in cats:
+                cats.append(c)
+
+    def _calc_table(sub_df, title, is_overall=False):
+        agg = sub_df.groupby(['जिला', 'निकाय'], as_index=False).agg({
+            'कुल की गई प्रविष्टि': 'sum',
+            'कुल प्रतिभागियों की संख्या': 'sum',
+            'कुल फोटो की संख्या': 'sum',
+            'कुल वीडियो की संख्या': 'sum'
+        })
+        merged = pd.merge(all_dist_nikays, agg, on=['जिला', 'निकाय'], how='left').fillna(0)
+        for num_c in ['कुल की गई प्रविष्टि', 'कुल प्रतिभागियों की संख्या', 'कुल फोटो की संख्या', 'कुल वीडियो की संख्या']:
+            merged[num_c] = merged[num_c].astype(int)
+
+        merged['राज्य-रैंक-प्रविष्टि'] = merged['कुल की गई प्रविष्टि'].rank(ascending=False, method='min').astype(int)
+        merged['राज्य-रैंक-प्रतिभागी'] = merged['कुल प्रतिभागियों की संख्या'].rank(ascending=False, method='min').astype(int)
+        merged['राज्य-रैंक-फोटो'] = merged['कुल फोटो की संख्या'].rank(ascending=False, method='min').astype(int)
+        merged['राज्य-रैंक-वीडियो'] = merged['कुल वीडियो की संख्या'].rank(ascending=False, method='min').astype(int)
+
+        res = merged[merged['जिला'] == target_district].sort_values('निकाय').reset_index(drop=True)
+        res.insert(0, 'क्र.सं.', range(1, len(res) + 1))
+        
+        cols_ordered = [
+            'क्र.सं.',
+            'निकाय',
+            'कुल की गई प्रविष्टि',
+            'राज्य-रैंक-प्रविष्टि',
+            'कुल प्रतिभागियों की संख्या',
+            'राज्य-रैंक-प्रतिभागी',
+            'कुल फोटो की संख्या',
+            'राज्य-रैंक-फोटो',
+            'कुल वीडियो की संख्या',
+            'राज्य-रैंक-वीडियो'
+        ]
+        res = res[cols_ordered].rename(columns={
+            'कुल की गई प्रविष्टि': 'प्रविष्टि',
+            'कुल प्रतिभागियों की संख्या': 'प्रतिभागी',
+            'कुल फोटो की संख्या': 'फोटो',
+            'कुल वीडियो की संख्या': 'वीडियो'
+        })
+        return {"title": title, "df": res, "is_overall": is_overall}
+
+    tables = []
+    tables.append(_calc_table(df_valid, f"समग्र (सभी इवेंट केटेगरी जोड़कर) — {target_district}", is_overall=True))
+    for cat in cats:
+        cat_sub = df_valid[df_valid['इवेंट केटेगरी'] == cat]
+        if not cat_sub.empty:
+            tables.append(_calc_table(cat_sub, cat, is_overall=False))
+
+    return tables
+
+def generate_nikay_wise_pdf_html(raw_df: pd.DataFrame, target_district: str, categories: list = None) -> str:
+    """
+    Generates HTML report for Nikay-wise ranking tables matching the block report style.
+    """
+    curr_time = datetime.now().strftime("%d/%m/%Y %I:%M %p")
+    col_m_ts = extract_column_m_timestamp(raw_df)
+    date_display = f"दिनांक {curr_time}"
+    if col_m_ts:
+        date_display += f" | डेटा टाइमस्टैम्प: {col_m_ts}"
+    tables = compute_nikay_wise_tables(raw_df, target_district, categories)
+
+    def _render_tbl_html(title, tbl_df):
+        rank_cols = ['राज्य-रैंक-प्रविष्टि', 'राज्य-रैंक-प्रतिभागी', 'राज्य-रैंक-फोटो', 'राज्य-रैंक-वीडियो']
+        col_min_max = {}
+        for rc in rank_cols:
+            col_min_max[rc] = (tbl_df[rc].min(), tbl_df[rc].max())
+
+        tbody_rows = []
+        for _, row in tbl_df.iterrows():
+            tds = []
+            tds.append(f'<td style="width: 35px;">{row["क्र.सं."]}</td>')
+            tds.append(f'<td style="width: 80px; text-align: left; padding-left: 6px;">{row["निकाय"]}</td>')
+            tds.append(f'<td style="width: 55px;">{row["प्रविष्टि"]:,}</td>')
+
+            # rank ent
+            bg_ent = get_nikay_rank_color(row['राज्य-रैंक-प्रविष्टि'])
+            tds.append(f'<td style="width: 70px; background-color: {bg_ent}; color: #000; font-weight: 600;">{row["राज्य-रैंक-प्रविष्टि"]}</td>')
+
+            tds.append(f'<td style="width: 60px;">{row["प्रतिभागी"]:,}</td>')
+
+            # rank part
+            bg_part = get_nikay_rank_color(row['राज्य-रैंक-प्रतिभागी'])
+            tds.append(f'<td style="width: 70px; background-color: {bg_part}; color: #000; font-weight: 600;">{row["राज्य-रैंक-प्रतिभागी"]}</td>')
+
+            tds.append(f'<td style="width: 50px;">{row["फोटो"]:,}</td>')
+
+            # rank photo
+            bg_photo = get_nikay_rank_color(row['राज्य-रैंक-फोटो'])
+            tds.append(f'<td style="width: 65px; background-color: {bg_photo}; color: #000; font-weight: 600;">{row["राज्य-रैंक-फोटो"]}</td>')
+
+            tds.append(f'<td style="width: 50px;">{row["वीडियो"]:,}</td>')
+
+            # rank video
+            bg_vid = get_nikay_rank_color(row['राज्य-रैंक-वीडियो'])
+            tds.append(f'<td style="width: 65px; background-color: {bg_vid}; color: #000; font-weight: 600;">{row["राज्य-रैंक-वीडियो"]}</td>')
+
+            tbody_rows.append('<tr>' + ''.join(tds) + '</tr>')
+
+        return f'''
+        <div class="table-box">
+            <div class="table-title">{title}</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 35px;">क्र.सं.</th>
+                        <th style="width: 80px;">निकाय</th>
+                        <th style="width: 55px;">प्रविष्टि</th>
+                        <th style="width: 70px;">राज्य-रैंक-<br>प्रविष्टि</th>
+                        <th style="width: 60px;">प्रतिभागी</th>
+                        <th style="width: 70px;">राज्य-रैंक-<br>प्रतिभागी</th>
+                        <th style="width: 50px;">फोटो</th>
+                        <th style="width: 65px;">राज्य-रैंक-<br>फोटो</th>
+                        <th style="width: 50px;">वीडियो</th>
+                        <th style="width: 65px;">राज्य-रैंक-<br>वीडियो</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {''.join(tbody_rows)}
+                </tbody>
+            </table>
+        </div>
+        '''
+
+    pages_html = []
+    chunk_size = 4
+    for p_idx in range(0, len(tables), chunk_size):
+        chunk = tables[p_idx:p_idx+chunk_size]
+        tbl_htmls = [_render_tbl_html(t["title"], t["df"]) for t in chunk]
+        p_html = f'''
+        <div class="report-page">
+            <div class="page-header">
+                <h1>जिला {target_district} — निकाय स्तरीय रैंकिंग (राज्य के कुल 309 निकायों में से)</h1>
+                <p>{date_display}</p>
+            </div>
+            {''.join(tbl_htmls)}
+        </div>
+        '''
+        pages_html.append(p_html)
+
+    return f'''<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <title>जिला {target_district} - निकाय स्तरीय रैंकिंग</title>
+    <style>
+        @page {{
+            size: A4 portrait;
+            margin: 12mm 10mm 12mm 10mm;
+        }}
+        * {{
+            box-sizing: border-box;
+            font-family: 'Nirmala UI', 'Mukta', 'Segoe UI', Arial, sans-serif;
+        }}
+        body {{
+            margin: 0;
+            padding: 0;
+            background: #FFFFFF;
+            color: #111827;
+        }}
+        .report-page {{
+            page-break-after: always;
+            padding-bottom: 10px;
+        }}
+        .report-page:last-child {{
+            page-break-after: auto;
+        }}
+        .page-header {{
+            text-align: center;
+            border-bottom: 2px solid #1f4d77;
+            padding-bottom: 6px;
+            margin-bottom: 12px;
+        }}
+        .page-header h1 {{
+            font-size: 15px;
+            color: #1f4d77;
+            margin: 0 0 3px 0;
+            font-weight: 700;
+        }}
+        .page-header p {{
+            font-size: 10px;
+            color: #4b5563;
+            margin: 0;
+        }}
+        .table-box {{
+            margin-bottom: 14px;
+            page-break-inside: avoid;
+        }}
+        .table-title {{
+            font-size: 11px;
+            font-weight: 700;
+            color: #1f4d77;
+            background-color: #f3f4f6;
+            padding: 4px 8px;
+            border-left: 4px solid #1f4d77;
+            margin-bottom: 3px;
+        }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 9.5px;
+            text-align: center;
+        }}
+        th {{
+            background-color: #1f4d77;
+            color: #FFFFFF;
+            padding: 4px 2px;
+            font-weight: 600;
+            border: 0.5px solid #777777;
+            line-height: 1.15;
+        }}
+        td {{
+            padding: 3.5px 2px;
+            border: 0.5px solid #777777;
+            line-height: 1.15;
+        }}
+    </style>
+</head>
+<body>
+    {''.join(pages_html)}
+</body>
+</html>'''
+
+@st.cache_data(show_spinner=False, max_entries=40)
+def create_nikay_wise_pdf(raw_df: pd.DataFrame, target_district: str, categories: list = None) -> bytes:
+    """
+    Renders Nikay-wise PDF.
+    First tries headless Chromium (Edge/Chrome) for perfect Devanagari text shaping.
+    Falls back to ReportLab if headless browser is not available.
+    """
+    html_content = generate_nikay_wise_pdf_html(raw_df, target_district, categories)
+    pdf_bytes = render_html_to_pdf(html_content)
+    if pdf_bytes:
+        return pdf_bytes
+
+    # ReportLab Fallback
+    hindi_font = register_hindi_font()
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=20,
+        rightMargin=20,
+        topMargin=25,
+        bottomMargin=20
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'HeaderTitle',
+        parent=styles['Normal'],
+        fontName=hindi_font,
+        fontSize=12,
+        leading=15,
+        textColor=colors.HexColor('#1f4d77'),
+        alignment=1,
+        fontBold=True
+    )
+    date_style = ParagraphStyle(
+        'HeaderDate',
+        parent=styles['Normal'],
+        fontName=hindi_font,
+        fontSize=8.5,
+        leading=11,
+        textColor=colors.HexColor('#4b5563'),
+        alignment=1
+    )
+    tbl_title_style = ParagraphStyle(
+        'TblTitle',
+        parent=styles['Normal'],
+        fontName=hindi_font,
+        fontSize=9.5,
+        leading=12,
+        textColor=colors.HexColor('#1f4d77'),
+        fontBold=True
+    )
+    th_style = ParagraphStyle(
+        'TH',
+        parent=styles['Normal'],
+        fontName=hindi_font,
+        fontSize=7.5,
+        leading=9.5,
+        textColor=colors.white,
+        alignment=1,
+        fontBold=True
+    )
+    td_style = ParagraphStyle(
+        'TD',
+        parent=styles['Normal'],
+        fontName=hindi_font,
+        fontSize=7.5,
+        leading=9.5,
+        alignment=1
+    )
+
+    elements = []
+    curr_time = datetime.now().strftime("%d/%m/%Y %I:%M %p")
+    tables = compute_nikay_wise_tables(raw_df, target_district, categories)
+
+    for idx, t_info in enumerate(tables):
+        if idx % 4 == 0:
+            if idx > 0:
+                elements.append(PageBreak())
+            elements.append(Paragraph(f"जिला {target_district} — निकाय स्तरीय रैंकिंग (राज्य के कुल 309 निकायों में से)", title_style))
+            elements.append(Paragraph(f"दिनांक {curr_time}", date_style))
+            elements.append(Spacer(1, 8))
+
+        elements.append(Paragraph(t_info['title'], tbl_title_style))
+        elements.append(Spacer(1, 3))
+
+        df_t = t_info['df']
+        t_data = [[
+            Paragraph('क्र.सं.', th_style),
+            Paragraph('निकाय', th_style),
+            Paragraph('प्रविष्टि', th_style),
+            Paragraph('राज्य-रैंक-<br/>प्रविष्टि', th_style),
+            Paragraph('प्रतिभागी', th_style),
+            Paragraph('राज्य-रैंक-<br/>प्रतिभागी', th_style),
+            Paragraph('फोटो', th_style),
+            Paragraph('राज्य-रैंक-<br/>फोटो', th_style),
+            Paragraph('वीडियो', th_style),
+            Paragraph('राज्य-रैंक-<br/>वीडियो', th_style)
+        ]]
+
+        rank_cols = ['राज्य-रैंक-प्रविष्टि', 'राज्य-रैंक-प्रतिभागी', 'राज्य-रैंक-फोटो', 'राज्य-रैंक-वीडियो']
+        col_min_max = {rc: (df_t[rc].min(), df_t[rc].max()) for rc in rank_cols}
+
+        t_styles = [
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f4d77')),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#777777')),
+            ('TOPPADDING', (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('LEFTPADDING', (0, 0), (-1, -1), 2),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+        ]
+
+        for r_idx, (_, row) in enumerate(df_t.iterrows(), start=1):
+            row_cells = [
+                Paragraph(str(row['क्र.सं.']), td_style),
+                Paragraph(str(row['निकाय']), td_style),
+                Paragraph(f"{row['प्रविष्टि']:,}", td_style),
+                Paragraph(str(row['राज्य-रैंक-प्रविष्टि']), td_style),
+                Paragraph(f"{row['प्रतिभागी']:,}", td_style),
+                Paragraph(str(row['राज्य-रैंक-प्रतिभागी']), td_style),
+                Paragraph(f"{row['फोटो']:,}", td_style),
+                Paragraph(str(row['राज्य-रैंक-फोटो']), td_style),
+                Paragraph(f"{row['वीडियो']:,}", td_style),
+                Paragraph(str(row['राज्य-रैंक-वीडियो']), td_style)
+            ]
+            t_data.append(row_cells)
+
+            # Conditional colors on rank columns: col index 3, 5, 7, 9
+            for col_idx, rc in [(3, 'राज्य-रैंक-प्रविष्टि'), (5, 'राज्य-रैंक-प्रतिभागी'), (7, 'राज्य-रैंक-फोटो'), (9, 'राज्य-रैंक-वीडियो')]:
+                bg = get_nikay_rank_color(row[rc])
+                t_styles.append(('BACKGROUND', (col_idx, r_idx), (col_idx, r_idx), colors.HexColor(bg)))
+
+        col_w = [28, 70, 52, 60, 55, 60, 48, 58, 48, 58]
+        tbl_obj = Table(t_data, colWidths=col_w)
+        tbl_obj.setStyle(TableStyle(t_styles))
+        elements.append(tbl_obj)
+        elements.append(Spacer(1, 6))
+
+    doc.build(elements)
+    return buf.getvalue()
+
+def generate_nikay_wise_printable_html(raw_df: pd.DataFrame, target_district: str, categories: list = None) -> str:
+    """
+    Generates a web-viewable printable HTML page with print toolbar for Nikay report.
+    """
+    body_html = generate_nikay_wise_pdf_html(raw_df, target_district, categories)
+    toolbar = f'''
+    <div style="position: sticky; top: 0; background: #1f4d77; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; z-index: 1000; box-shadow: 0 3px 8px rgba(0,0,0,0.2); border-radius: 6px; margin: 10px 12px 14px 12px;">
+        <span style="font-weight: 700; font-size: 15px;">🖨️ निकाय स्तरीय रैंकिंग रिपोर्ट प्रिव्यू (जिला: {target_district} | राज्य के कुल 309 निकाय)</span>
+        <button onclick="window.print()" style="background: #f59e0b; color: #111827; font-weight: 700; border: none; padding: 7px 18px; border-radius: 5px; cursor: pointer; font-size: 14px;">
+            🖨️ अभी प्रिंट करें / Save as PDF
+        </button>
+    </div>
+    '''
+    return body_html.replace('<body>', f'<body>\n{toolbar}')
+
+@st.cache_data(show_spinner=False, max_entries=30)
+def create_nikay_wise_excel(raw_df: pd.DataFrame, target_district: str, categories: list = None) -> bytes:
+    """
+    Generates an Excel workbook with styled tables and 3-color conditional formatting on rank columns for Nikay report.
+    """
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+    tables = compute_nikay_wise_tables(raw_df, target_district, categories)
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "निकाय_रैंकिंग"
+
+    header_font = Font(name="Calibri", size=10, bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="1F4D77", end_color="1F4D77", fill_type="solid")
+    title_font = Font(name="Calibri", size=11, bold=True, color="1F4D77")
+    cell_font = Font(name="Calibri", size=10)
+    center_align = Alignment(horizontal="center", vertical="center")
+    left_align = Alignment(horizontal="left", vertical="center")
+    
+    thin_border = Border(
+        left=Side(style='thin', color='777777'),
+        right=Side(style='thin', color='777777'),
+        top=Side(style='thin', color='777777'),
+        bottom=Side(style='thin', color='777777')
+    )
+
+    curr_row = 1
+    # Report Main Title
+    ws.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=10)
+    top_cell = ws.cell(row=curr_row, column=1, value=f"जिला {target_district} — निकाय स्तरीय रैंकिंग (राज्य के कुल 309 निकायों में से)")
+    top_cell.font = Font(name="Calibri", size=13, bold=True, color="1F4D77")
+    top_cell.alignment = center_align
+    curr_row += 1
+
+    date_cell = ws.cell(row=curr_row, column=1, value=f"दिनांक {datetime.now().strftime('%d/%m/%Y %I:%M %p')}")
+    ws.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=10)
+    date_cell.font = Font(name="Calibri", size=10, bold=True, color="1F4D77")
+    date_cell.alignment = center_align
+    curr_row += 2
+
+    for t_info in tables:
+        # Table title
+        ws.cell(row=curr_row, column=1, value=t_info['title']).font = title_font
+        curr_row += 1
+
+        df_t = t_info['df']
+        rank_cols = ['राज्य-रैंक-प्रविष्टि', 'राज्य-रैंक-प्रतिभागी', 'राज्य-रैंक-फोटो', 'राज्य-रैंक-वीडियो']
+
+        # Header row
+        for c_idx, col_name in enumerate(df_t.columns, 1):
+            cell = ws.cell(row=curr_row, column=c_idx, value=col_name)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center_align
+            cell.border = thin_border
+        curr_row += 1
+
+        # Data rows
+        for _, row in df_t.iterrows():
+            for c_idx, col_name in enumerate(df_t.columns, 1):
+                val = row[col_name]
+                cell = ws.cell(row=curr_row, column=c_idx, value=val)
+                cell.font = cell_font
+                cell.border = thin_border
+                cell.alignment = left_align if col_name == 'निकाय' else center_align
+
+                if col_name in rank_cols:
+                    hex_color = get_nikay_rank_color(val).replace('#', '')
+                    cell.fill = PatternFill(start_color=hex_color, end_color=hex_color, fill_type="solid")
+            curr_row += 1
+
+        curr_row += 1
+
+    col_widths = {1: 8, 2: 16, 3: 12, 4: 18, 5: 12, 6: 18, 7: 10, 8: 16, 9: 10, 10: 16}
+    for c_idx, w in col_widths.items():
+        col_letter = openpyxl.utils.get_column_letter(c_idx)
+        ws.column_dimensions[col_letter].width = w
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
 
