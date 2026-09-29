@@ -17,6 +17,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 
 FONT_NAME = "Helvetica"
 HINDI_REGISTERED = False
+FONTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
 
 def register_hindi_font():
     global FONT_NAME, HINDI_REGISTERED
@@ -24,11 +25,15 @@ def register_hindi_font():
         return FONT_NAME
     
     font_candidates = [
+        # 1. Bundled repository fonts (works on Streamlit Cloud Linux, Windows, Mac)
+        ("MuktaHindi", os.path.join(FONTS_DIR, "Mukta-Regular.ttf"), None),
+        ("NotoDevanagari", os.path.join(FONTS_DIR, "NotoSansDevanagari-Regular.ttf"), None),
+        # 2. Windows system fonts
         ("NirmalaHindi", "C:/Windows/Fonts/Nirmala.ttc", 0),
         ("MangalHindi", "C:/Windows/Fonts/mangal.ttf", None),
         ("AparajitaHindi", "C:/Windows/Fonts/aparaj.ttf", None),
         ("ArialUnicode", "C:/Windows/Fonts/ARIALUNI.TTF", None),
-        # Cross-platform / Linux font candidates
+        # 3. Cross-platform / Linux system font candidates
         ("NotoSansDevanagari", "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf", None),
         ("Gargi", "/usr/share/fonts/truetype/gargi/Gargi.ttf", None),
         ("LohitDevanagari", "/usr/share/fonts/truetype/lohit-devanagari/Lohit-Devanagari.ttf", None),
@@ -86,45 +91,185 @@ def get_system_browser() -> str:
             return p
     return None
 
-def render_html_to_pdf(html_content: str) -> bytes:
+def _inject_local_fonts_css(html_content: str) -> str:
     """
-    Uses headless Chromium (Edge, Chrome, or Chromium) to generate a PDF with flawless Hindi Unicode
-    complex text shaping (matras, ligatures, half-consonants) and crisp print typography.
+    Injects local @font-face declarations referencing bundled TTF files in ./fonts/
+    so headless browsers render Devanagari immediately from disk without network dependence.
     """
-    browser_path = get_system_browser()
-    if not browser_path:
-        return None
+    from pathlib import Path
+    if not os.path.isdir(FONTS_DIR):
+        return html_content
 
+    mukta_reg = Path(os.path.join(FONTS_DIR, "Mukta-Regular.ttf")).resolve()
+    mukta_bold = Path(os.path.join(FONTS_DIR, "Mukta-Bold.ttf")).resolve()
+    noto_reg = Path(os.path.join(FONTS_DIR, "NotoSansDevanagari-Regular.ttf")).resolve()
+
+    rules = []
+    if mukta_reg.exists():
+        rules.append(f"@font-face {{ font-family: 'Mukta'; src: url('{mukta_reg.as_uri()}') format('truetype'); font-weight: 400; font-style: normal; }}")
+        rules.append(f"@font-face {{ font-family: 'Mukta'; src: url('{mukta_reg.as_uri()}') format('truetype'); font-weight: 500; font-style: normal; }}")
+    if mukta_bold.exists():
+        rules.append(f"@font-face {{ font-family: 'Mukta'; src: url('{mukta_bold.as_uri()}') format('truetype'); font-weight: 600; font-style: normal; }}")
+        rules.append(f"@font-face {{ font-family: 'Mukta'; src: url('{mukta_bold.as_uri()}') format('truetype'); font-weight: 700; font-style: normal; }}")
+        rules.append(f"@font-face {{ font-family: 'Mukta'; src: url('{mukta_bold.as_uri()}') format('truetype'); font-weight: 800; font-style: normal; }}")
+    if noto_reg.exists():
+        rules.append(f"@font-face {{ font-family: 'Noto Sans Devanagari'; src: url('{noto_reg.as_uri()}') format('truetype'); font-weight: 400 800; font-style: normal; }}")
+
+    if not rules:
+        return html_content
+
+    style_block = "<style>\n" + "\n".join(rules) + "\n</style>\n"
+    if "<head>" in html_content:
+        return html_content.replace("<head>", "<head>\n" + style_block, 1)
+    return style_block + html_content
+
+def render_html_to_pdf_pymupdf(html_content: str) -> bytes:
+    """
+    Pure-Python HarfBuzz + MuPDF HTML-to-PDF renderer using PyMuPDF (fitz.Story) and bundled ./fonts/.
+    Works on any OS/container (including Streamlit Cloud Linux) even without Chromium installed.
+    """
     try:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            html_file = os.path.join(tmpdir, "report.html")
-            pdf_file = os.path.join(tmpdir, "report.pdf")
+        import fitz
+        if not os.path.isdir(FONTS_DIR):
+            return None
 
-            with open(html_file, "w", encoding="utf-8") as f:
-                f.write(html_content)
+        is_landscape = "landscape" in html_content[:1500].lower()
+        mediabox = fitz.paper_rect("a4-l" if is_landscape else "a4")
+        margin_x = 15
+        margin_y = 12
+        where = mediabox + (margin_x, margin_y, -margin_x, -margin_y)
 
-            file_url = f"file:///{html_file.replace(os.sep, '/')}"
-            is_chrome = "chrome" in browser_path.lower()
-            cmd = [
-                browser_path,
-                "--headless=new" if is_chrome else "--headless",
-                "--disable-gpu",
-                "--no-sandbox",
-                "--disable-setuid-sandbox",
-                "--disable-dev-shm-usage",
-                "--no-pdf-header-footer",
-                "--run-all-compositor-stages-before-draw",
-                f"--print-to-pdf={pdf_file}",
-                file_url
-            ]
-            subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=25, check=True)
-            if os.path.exists(pdf_file) and os.path.getsize(pdf_file) > 0:
-                with open(pdf_file, "rb") as pf:
-                    return pf.read()
+        # Strip remote font imports/links that MuPDF cannot fetch
+        cleaned = re.sub(r'<link[^>]*>', '', html_content, flags=re.IGNORECASE)
+        cleaned = re.sub(r'@import\s+url\([^)]+\)\s*;?', '', cleaned, flags=re.IGNORECASE)
+
+        # Replace supplementary-plane emojis not present in MuPDF's built-in symbol font
+        emoji_replacements = {
+            "📊": "■",
+            "📸": "📷",
+            "🏆": "●",
+            "💡": "✦",
+            "🌟": "●",
+        }
+        for k, v in emoji_replacements.items():
+            cleaned = cleaned.replace(k, v)
+
+        # Scale down fixed pixel widths in inline styles so tables fit A4 width cleanly
+        scale_factor = 0.85 if is_landscape else 0.72
+        def _scale_px(match):
+            px_val = float(match.group(1))
+            scaled = max(22, int(px_val * scale_factor))
+            return f"width: {scaled}pt"
+
+        cleaned = re.sub(r'width\s*:\s*(\d+(?:\.\d+)?)px', _scale_px, cleaned)
+
+        user_css = """
+        @font-face {
+            font-family: 'Mukta';
+            src: url('Mukta-Regular.ttf');
+            font-weight: normal;
+        }
+        @font-face {
+            font-family: 'Mukta';
+            src: url('Mukta-Bold.ttf');
+            font-weight: bold;
+        }
+        @font-face {
+            font-family: 'Mukta';
+            src: url('Mukta-Bold.ttf');
+            font-weight: 600;
+        }
+        @font-face {
+            font-family: 'Mukta';
+            src: url('Mukta-Bold.ttf');
+            font-weight: 700;
+        }
+        body, table, th, td, div, p, h1, h2, h3, span {
+            font-family: 'Mukta', sans-serif !important;
+        }
+        .report-wrap {
+            max-width: 100% !important;
+            padding: 0 !important;
+            margin: 0 !important;
+        }
+        .report-page, .event-page {
+            page-break-after: always;
+            break-after: page;
+        }
+        .report-page:last-child, .event-page:last-child {
+            page-break-after: auto;
+            break-after: auto;
+        }
+        .event-page td, .event-page th {
+            padding: 1.2pt 2pt !important;
+            font-size: 8pt !important;
+            line-height: 1.05 !important;
+        }
+        table {
+            width: 100% !important;
+            border-collapse: collapse;
+        }
+        """
+
+        arch = fitz.Archive(FONTS_DIR)
+        story = fitz.Story(html=cleaned, user_css=user_css, archive=arch)
+        out_buf = io.BytesIO()
+        writer = fitz.DocumentWriter(out_buf)
+        more = 1
+        while more:
+            device = writer.begin_page(mediabox)
+            more, _ = story.place(where)
+            story.draw(device)
+            writer.end_page()
+        writer.close()
+        pdf_bytes = out_buf.getvalue()
+        if pdf_bytes and len(pdf_bytes) > 100:
+            return pdf_bytes
     except Exception:
         pass
-
     return None
+
+def render_html_to_pdf(html_content: str) -> bytes:
+    """
+    Uses headless Chromium (Edge, Chrome, or Chromium) with bundled local Hindi fonts to generate
+    a PDF with flawless Hindi Unicode complex text shaping, falling back to PyMuPDF (HarfBuzz + MuPDF)
+    if no system browser is available.
+    """
+    from pathlib import Path
+    browser_path = get_system_browser()
+    if browser_path:
+        try:
+            enriched_html = _inject_local_fonts_css(html_content)
+            with tempfile.TemporaryDirectory() as tmpdir:
+                html_file = os.path.join(tmpdir, "report.html")
+                pdf_file = os.path.join(tmpdir, "report.pdf")
+
+                with open(html_file, "w", encoding="utf-8") as f:
+                    f.write(enriched_html)
+
+                file_url = Path(html_file).resolve().as_uri()
+                cmd = [
+                    browser_path,
+                    "--headless",
+                    "--disable-gpu",
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--allow-file-access-from-files",
+                    "--no-pdf-header-footer",
+                    "--run-all-compositor-stages-before-draw",
+                    f"--print-to-pdf={pdf_file}",
+                    file_url
+                ]
+                subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=25, check=True)
+                if os.path.exists(pdf_file) and os.path.getsize(pdf_file) > 0:
+                    with open(pdf_file, "rb") as pf:
+                        return pf.read()
+        except Exception:
+            pass
+
+    # Fallback to PyMuPDF (HarfBuzz + MuPDF HTML/CSS engine with bundled Mukta/Noto Devanagari fonts)
+    return render_html_to_pdf_pymupdf(html_content)
 
 def extract_column_m_timestamp(df: pd.DataFrame) -> str:
     """
