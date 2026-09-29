@@ -27,7 +27,12 @@ def register_hindi_font():
         ("NirmalaHindi", "C:/Windows/Fonts/Nirmala.ttc", 0),
         ("MangalHindi", "C:/Windows/Fonts/mangal.ttf", None),
         ("AparajitaHindi", "C:/Windows/Fonts/aparaj.ttf", None),
-        ("ArialUnicode", "C:/Windows/Fonts/ARIALUNI.TTF", None)
+        ("ArialUnicode", "C:/Windows/Fonts/ARIALUNI.TTF", None),
+        # Cross-platform / Linux font candidates
+        ("NotoSansDevanagari", "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf", None),
+        ("Gargi", "/usr/share/fonts/truetype/gargi/Gargi.ttf", None),
+        ("LohitDevanagari", "/usr/share/fonts/truetype/lohit-devanagari/Lohit-Devanagari.ttf", None),
+        ("SamyakDevanagari", "/usr/share/fonts/truetype/samyak/Samyak-Devanagari.ttf", None)
     ]
     
     for fname, path, subidx in font_candidates:
@@ -49,8 +54,16 @@ def register_hindi_font():
 
 def get_system_browser() -> str:
     """
-    Finds Edge or Chrome executable on Windows for 100% accurate Devanagari/Hindi font rendering.
+    Finds Edge or Chrome / Chromium executable on Windows, Linux, or Mac for 100% accurate Devanagari/Hindi font rendering.
     """
+    import shutil
+    # 1. Check system PATH first
+    for exe in ["msedge", "microsoft-edge", "chrome", "google-chrome", "chromium", "chromium-browser"]:
+        found = shutil.which(exe)
+        if found:
+            return found
+
+    # 2. Check standard Windows and Unix paths
     candidates = [
         r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
         r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
@@ -58,6 +71,15 @@ def get_system_browser() -> str:
         r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
         os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\Edge\Application\msedge.exe"),
         os.path.expandvars(r"%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"),
+        # Linux standard paths
+        "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable",
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+        "/snap/bin/chromium",
+        # Mac standard paths
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"
     ]
     for p in candidates:
         if os.path.exists(p):
@@ -66,7 +88,7 @@ def get_system_browser() -> str:
 
 def render_html_to_pdf(html_content: str) -> bytes:
     """
-    Uses headless Chromium (Edge or Chrome) to generate a PDF with flawless Hindi Unicode
+    Uses headless Chromium (Edge, Chrome, or Chromium) to generate a PDF with flawless Hindi Unicode
     complex text shaping (matras, ligatures, half-consonants) and crisp print typography.
     """
     browser_path = get_system_browser()
@@ -82,11 +104,14 @@ def render_html_to_pdf(html_content: str) -> bytes:
                 f.write(html_content)
 
             file_url = f"file:///{html_file.replace(os.sep, '/')}"
-            is_chrome = "chrome.exe" in browser_path.lower()
+            is_chrome = "chrome" in browser_path.lower()
             cmd = [
                 browser_path,
                 "--headless=new" if is_chrome else "--headless",
                 "--disable-gpu",
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
                 "--no-pdf-header-footer",
                 "--run-all-compositor-stages-before-draw",
                 f"--print-to-pdf={pdf_file}",
@@ -118,18 +143,33 @@ def extract_column_m_timestamp(df: pd.DataFrame) -> str:
             return col_m_name
     return None
 
+def get_data_update_timestamp(df: pd.DataFrame = None) -> str:
+    """
+    Standard timestamp getter: returns Column M timestamp if present in df or local cache; otherwise current time.
+    """
+    ts = extract_column_m_timestamp(df)
+    if ts:
+        return ts
+    try:
+        local_csv = os.path.join(os.path.dirname(__file__), "vbsja_data.csv")
+        if os.path.exists(local_csv):
+            sample_df = pd.read_csv(local_csv, nrows=2, encoding="utf-8")
+            ts = extract_column_m_timestamp(sample_df)
+            if ts:
+                return ts
+    except Exception:
+        pass
+    return datetime.now().strftime("%d/%m/%Y %I:%M %p")
+
 # ==========================================
 # 1. DISTRICT RANKING REPORT PDF
 # ==========================================
 def generate_district_pdf_html(df: pd.DataFrame, title: str, subtitle: str) -> str:
-    curr_time = datetime.now().strftime("%d-%m-%Y %I:%M %p")
     is_landscape = len(df.columns) > 6
     orientation = "landscape" if is_landscape else "portrait"
     
-    col_m_ts = extract_column_m_timestamp(df)
-    sub_text = f"रिपोर्ट दिनांक व समय: {curr_time} | कुल रिकॉर्ड: {len(df):,}"
-    if col_m_ts:
-        sub_text += f" | डेटा टाइमस्टैम्प (Col M): {col_m_ts}"
+    col_m_ts = get_data_update_timestamp(df)
+    sub_text = f"⏱️ Data updated on: {col_m_ts} | कुल रिकॉर्ड: {len(df):,}"
     if subtitle:
         sub_text += f" | {subtitle}"
         
@@ -158,14 +198,18 @@ def generate_district_pdf_html(df: pd.DataFrame, title: str, subtitle: str) -> s
 <head>
     <meta charset="UTF-8">
     <title>{title}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Mukta:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700;800&display=swap');
         @page {{
             size: A4 {orientation};
             margin: 12mm 15mm 15mm 15mm;
         }}
         * {{
             box-sizing: border-box;
-            font-family: 'Nirmala UI', 'Mukta', 'Segoe UI', Arial, sans-serif;
+            font-family: 'Mukta', 'Noto Sans Devanagari', 'Nirmala UI', 'Mangal', 'Segoe UI', Arial, sans-serif !important;
         }}
         body {{
             margin: 0;
@@ -313,8 +357,8 @@ def _create_district_pdf_reportlab(df: pd.DataFrame, title: str, subtitle: str) 
     )
 
     elements.append(Paragraph(title, title_style))
-    curr_time = datetime.now().strftime("%d-%m-%Y %I:%M %p")
-    sub_text = f"रिपोर्ट दिनांक व समय: {curr_time} | कुल जिले: {len(df)}"
+    col_m_ts = get_data_update_timestamp(df)
+    sub_text = f"⏱️ Data updated on: {col_m_ts} | कुल जिले: {len(df)}"
     if subtitle:
         sub_text += f" | {subtitle}"
     elements.append(Paragraph(sub_text, sub_style))
@@ -381,7 +425,7 @@ def generate_event_wise_pdf_html(
     include_summary: bool = True,
     only_summary: bool = False
 ) -> str:
-    curr_time = datetime.now().strftime("%d-%m-%Y %I:%M %p")
+    curr_time = get_data_update_timestamp(raw_df)
     if not categories:
         categories = sorted([c for c in raw_df["इवेंट केटेगरी"].dropna().unique() if str(c).strip()])
 
@@ -540,7 +584,7 @@ def generate_event_wise_pdf_html(
         <div class="event-page">
             <div class="header">
                 <h1>VBSJA - समग्र जिलावार प्रविष्टि एवं रैंकिंग रिपोर्ट</h1>
-                <p>दिनांक व समय: {curr_time} | कुल जिले: {len(sorted_overall)} | कुल इवेंट श्रेणियां: {len(categories)}</p>
+                <p>⏱️ Data updated on: {curr_time} | कुल जिले: {len(sorted_overall)} | कुल इवेंट श्रेणियां: {len(categories)}</p>
             </div>
             
             <div class="event-title-banner" style="background: #1e3a8a; color: white;">
@@ -673,7 +717,7 @@ def generate_event_wise_pdf_html(
             <div class="event-page">
                 <div class="header">
                     <h1>VBSJA - इवेंटवार जिला रैंकिंग रिपोर्ट</h1>
-                    <p>दिनांक व समय: {curr_time} | कुल इवेंट श्रेणियां: {len(categories)}</p>
+                    <p>⏱️ Data updated on: {curr_time} | कुल इवेंट श्रेणियां: {len(categories)}</p>
                 </div>
                 
                 <div class="event-title-banner">
@@ -719,14 +763,18 @@ def generate_event_wise_pdf_html(
 <html lang="hi">
 <head>
     <meta charset="UTF-8">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Mukta:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700;800&display=swap');
         @page {{
             size: A4 portrait;
             margin: 6mm 10mm 6mm 10mm;
         }}
         * {{
             box-sizing: border-box;
-            font-family: 'Nirmala UI', 'Mukta', 'Segoe UI', Arial, sans-serif;
+            font-family: 'Mukta', 'Noto Sans Devanagari', 'Nirmala UI', 'Mangal', 'Segoe UI', Arial, sans-serif !important;
         }}
         body {{
             margin: 0;
@@ -987,7 +1035,7 @@ def _create_event_wise_pdf_reportlab(
         rank_map = overall_agg.set_index("जिला")[["orig_ent_rank", "orig_part_rank", "orig_photo_rank", "orig_video_rank"]].to_dict("index")
 
     is_separate = "separate" in str(table_format).lower() or "अलग" in str(table_format)
-    curr_time = datetime.now().strftime("%d-%m-%Y %I:%M %p")
+    curr_time = get_data_update_timestamp(raw_df)
 
     # ----------------------------------------------------
     # PAGE 1: OVERALL STATE SUMMARY (समग्र - सभी 10 इवेंट श्रेणियां जोड़कर)
@@ -1005,7 +1053,7 @@ def _create_event_wise_pdf_reportlab(
         overall_top_v = sorted_overall.iloc[0]["कुल की गई प्रविष्टि"] if not sorted_overall.empty else 0
 
         elements.append(Paragraph("VBSJA - समग्र जिलावार प्रविष्टि एवं रैंकिंग रिपोर्ट", title_style))
-        elements.append(Paragraph(f"रिपोर्ट समय: {curr_time} | कुल जिले: {len(sorted_overall)} | कुल इवेंट श्रेणियां: {len(categories)}", sub_style))
+        elements.append(Paragraph(f"⏱️ Data updated on: {curr_time} | कुल जिले: {len(sorted_overall)} | कुल इवेंट श्रेणियां: {len(categories)}", sub_style))
         elements.append(Spacer(1, 6))
 
         elements.append(Paragraph(f"<b>📊 समग्र जिला रैंकिंग (सभी {len(categories)} इवेंट श्रेणियां जोड़कर)</b>", cat_banner_style))
@@ -1158,7 +1206,7 @@ def _create_event_wise_pdf_reportlab(
         top_v = cat_agg.iloc[0]["कुल की गई प्रविष्टि"] if not cat_agg.empty else 0
 
         elements.append(Paragraph("VBSJA - इवेंटवार जिला रैंकिंग रिपोर्ट", title_style))
-        elements.append(Paragraph(f"रिपोर्ट समय: {curr_time} | कुल इवेंट श्रेणियां: {len(categories)}", sub_style))
+        elements.append(Paragraph(f"⏱️ Data updated on: {curr_time} | कुल इवेंट श्रेणियां: {len(categories)}", sub_style))
         elements.append(Spacer(1, 6))
 
         event_num_label = f"📁 इवेंट श्रेणी #{idx + 1}: {cat}"
@@ -1373,7 +1421,7 @@ def create_event_wise_zip(
 # 3. PRINTABLE HTML VIEW (PORTRAIT)
 # ==========================================
 def generate_printable_html(df: pd.DataFrame, title: str = "तालिका प्रिंट प्रिव्यू", max_rows: int = 500, active_filters_text: str = "", orientation: str = "portrait") -> str:
-    curr_time = datetime.now().strftime("%d-%m-%Y %I:%M %p")
+    curr_time = get_data_update_timestamp(df)
     df_to_render = df.head(max_rows)
 
     
@@ -1390,10 +1438,14 @@ def generate_printable_html(df: pd.DataFrame, title: str = "तालिका �
 <head>
     <meta charset="UTF-8">
     <title>{title}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Mukta:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700;800&display=swap');
         * {{
             box-sizing: border-box;
-            font-family: 'Nirmala UI', 'Mukta', 'Segoe UI', Arial, sans-serif;
+            font-family: 'Mukta', 'Noto Sans Devanagari', 'Nirmala UI', 'Mangal', 'Segoe UI', Arial, sans-serif !important;
         }}
         body {{
             background: #f8fafc;
@@ -1406,10 +1458,10 @@ def generate_printable_html(df: pd.DataFrame, title: str = "तालिका �
             top: 0;
             background: #1e3a8a;
             color: white;
-            padding: 12px 20px;
+            padding: 10px 20px;
             border-radius: 8px;
             display: flex;
-            justify-content: space-between;
+            justify-content: flex-end;
             align-items: center;
             margin-bottom: 20px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
@@ -1508,9 +1560,6 @@ def generate_printable_html(df: pd.DataFrame, title: str = "तालिका �
 </head>
 <body>
     <div class="print-toolbar">
-        <div>
-            <strong>🖨️ प्रिंट प्रिव्यू ({orientation.capitalize()})</strong> &nbsp;|&nbsp; <span>{title}</span>
-        </div>
         <button class="print-btn" onclick="window.print()">
             🖨️ अभी प्रिंट करें / Save as PDF
         </button>
@@ -1518,7 +1567,7 @@ def generate_printable_html(df: pd.DataFrame, title: str = "तालिका �
 
     <div class="report-header">
         <h1>{title}</h1>
-        <p>दिनांक व समय: {curr_time} | कुल रिकॉर्ड: {len(df_to_render):,}</p>
+        <p>⏱️ Data updated on: {curr_time} | कुल रिकॉर्ड: {len(df_to_render):,}</p>
     </div>
 
     {filter_banner_html}
@@ -1727,11 +1776,8 @@ def compute_block_wise_tables(raw_df: pd.DataFrame, target_district: str, catego
     return tables
 
 def generate_block_wise_pdf_html(raw_df: pd.DataFrame, target_district: str, categories: list = None) -> str:
-    curr_time = datetime.now().strftime("%d/%m/%Y %I:%M %p")
-    col_m_ts = extract_column_m_timestamp(raw_df)
-    date_display = f"दिनांक {curr_time}"
-    if col_m_ts:
-        date_display += f" | डेटा टाइमस्टैम्प: {col_m_ts}"
+    col_m_ts = get_data_update_timestamp(raw_df)
+    date_display = f"⏱️ Data updated on: {col_m_ts}"
     tables = compute_block_wise_tables(raw_df, target_district, categories)
 
     def _render_tbl_html(title, tbl_df):
@@ -1817,14 +1863,18 @@ def generate_block_wise_pdf_html(raw_df: pd.DataFrame, target_district: str, cat
 <head>
     <meta charset="UTF-8">
     <title>जिला {target_district} - ब्लॉक स्तरीय रैंकिंग</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Mukta:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700;800&display=swap');
         @page {{
             size: A4 portrait;
             margin: 8mm 12mm 8mm 12mm;
         }}
         * {{
             box-sizing: border-box;
-            font-family: 'Nirmala UI', 'Mukta', 'Segoe UI', Arial, sans-serif;
+            font-family: 'Mukta', 'Noto Sans Devanagari', 'Nirmala UI', 'Mangal', 'Segoe UI', Arial, sans-serif !important;
         }}
         body {{
             margin: 0;
@@ -1974,7 +2024,7 @@ def _create_block_wise_pdf_reportlab(raw_df: pd.DataFrame, target_district: str,
         alignment=1
     )
 
-    curr_time = datetime.now().strftime("%d/%m/%Y %I:%M %p")
+    curr_time = get_data_update_timestamp(raw_df)
     tables = compute_block_wise_tables(raw_df, target_district, categories)
 
     for idx, t_info in enumerate(tables):
@@ -1983,7 +2033,7 @@ def _create_block_wise_pdf_reportlab(raw_df: pd.DataFrame, target_district: str,
             if idx > 0:
                 elements.append(PageBreak())
             elements.append(Paragraph(f"जिला {target_district} — ब्लॉक स्तरीय रैंकिंग (राज्य के कुल 457 ब्लॉकों में से)", header_style))
-            elements.append(Paragraph(f"दिनांक {curr_time}", sub_style))
+            elements.append(Paragraph(f"⏱️ Data updated on: {curr_time}", sub_style))
             elements.append(Spacer(1, 6))
 
         elements.append(Paragraph(f"<b>{t_info['title']}</b>", tbl_title_style))
@@ -2047,13 +2097,12 @@ def _create_block_wise_pdf_reportlab(raw_df: pd.DataFrame, target_district: str,
 
 def generate_block_wise_printable_html(raw_df: pd.DataFrame, target_district: str, categories: list = None) -> str:
     """
-    Generates a web-viewable printable HTML page with print toolbar.
+    Generates a web-viewable printable HTML page with print toolbar (label removed as requested).
     """
     body_html = generate_block_wise_pdf_html(raw_df, target_district, categories)
-    # Inject print toolbar at top of body
     toolbar = f'''
-    <div style="position: sticky; top: 0; background: #1f4d77; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; z-index: 1000; box-shadow: 0 3px 8px rgba(0,0,0,0.2); border-radius: 6px; margin: 10px 12px 14px 12px;">
-        <span style="font-weight: 700; font-size: 15px;">🖨️ ब्लॉक स्तरीय रैंकिंग रिपोर्ट प्रिव्यू (जिला: {target_district} | राज्य के कुल 457 ब्लॉक)</span>
+    <style>@media print {{ .no-print-toolbar {{ display: none !important; }} }}</style>
+    <div class="no-print-toolbar" style="position: sticky; top: 0; background: #1f4d77; color: white; padding: 8px 16px; display: flex; justify-content: flex-end; align-items: center; z-index: 1000; box-shadow: 0 3px 8px rgba(0,0,0,0.2); border-radius: 6px; margin: 8px 12px 12px 12px;">
         <button onclick="window.print()" style="background: #f59e0b; color: #111827; font-weight: 700; border: none; padding: 7px 18px; border-radius: 5px; cursor: pointer; font-size: 14px;">
             🖨️ अभी प्रिंट करें / Save as PDF
         </button>
@@ -2097,7 +2146,7 @@ def create_block_wise_excel(raw_df: pd.DataFrame, target_district: str, categori
     top_cell.alignment = center_align
     curr_row += 1
 
-    date_cell = ws.cell(row=curr_row, column=1, value=f"दिनांक {datetime.now().strftime('%d/%m/%Y %I:%M %p')}")
+    date_cell = ws.cell(row=curr_row, column=1, value=f"⏱️ Data updated on: {get_data_update_timestamp(raw_df)}")
     ws.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=10)
     date_cell.font = Font(name="Calibri", size=10, bold=True, color="1F4D77")
     date_cell.alignment = center_align
@@ -2295,12 +2344,9 @@ def generate_district_event_summary_pdf_html(raw_df: pd.DataFrame, target_distri
     - Golden/Yellow highlight #FEF3C7 on summary row
     """
     df_res = compute_district_event_summary_table(raw_df, target_district, categories)
-    curr_time = datetime.now().strftime("%d/%m/%Y %I:%M %p")
-    col_m_ts = extract_column_m_timestamp(raw_df)
-    date_display = f"दिनांक {curr_time}"
-    if col_m_ts:
-        date_display += f" (डेटा टाइमस्टैम्प: {col_m_ts})"
-    title = custom_title or f"जिला {target_district} — सभी इवेंट केटेगरी में रैंक {date_display}"
+    col_m_ts = get_data_update_timestamp(raw_df)
+    date_display = f"⏱️ Data updated on: {col_m_ts}"
+    title = custom_title or f"जिला {target_district} — सभी इवेंट केटेगरी में रैंक ({date_display})"
 
     # Total districts in state for rank normalization (41)
     all_dist_count = max(1, len(raw_df['जिला'].dropna().unique()))
@@ -2354,14 +2400,18 @@ def generate_district_event_summary_pdf_html(raw_df: pd.DataFrame, target_distri
 <head>
     <meta charset="UTF-8">
     <title>{title}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Mukta:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700;800&display=swap');
         @page {{
             size: A4 portrait;
             margin: 22mm 15mm 20mm 15mm;
         }}
         * {{
             box-sizing: border-box;
-            font-family: 'Nirmala UI', 'Mukta', 'Segoe UI', Arial, sans-serif;
+            font-family: 'Mukta', 'Noto Sans Devanagari', 'Nirmala UI', 'Mangal', 'Segoe UI', Arial, sans-serif !important;
         }}
         body {{
             margin: 0;
@@ -2513,11 +2563,11 @@ def create_district_event_summary_pdf(raw_df: pd.DataFrame, target_district: str
     )
 
     df_res = compute_district_event_summary_table(raw_df, target_district, categories)
-    curr_time = datetime.now().strftime("%d/%m/%Y %I:%M %p")
+    curr_time = get_data_update_timestamp(raw_df)
     all_dist_count = max(1, len(raw_df['जिला'].dropna().unique()))
 
     elements = [
-        Paragraph(f"जिला {target_district} — सभी इवेंट केटेगरी में रैंक दिनांक {curr_time}", title_style),
+        Paragraph(f"जिला {target_district} — सभी इवेंट केटेगरी में रैंक (⏱️ Data updated on: {curr_time})", title_style),
         Spacer(1, 14)
     ]
 
@@ -2581,12 +2631,12 @@ def create_district_event_summary_pdf(raw_df: pd.DataFrame, target_district: str
 
 def generate_district_event_summary_printable_html(raw_df: pd.DataFrame, target_district: str, categories: list = None) -> str:
     """
-    Generates a web-viewable printable HTML page with sticky print toolbar.
+    Generates a web-viewable printable HTML page with sticky print toolbar (label removed).
     """
     body_html = generate_district_event_summary_pdf_html(raw_df, target_district, categories)
     toolbar = f'''
-    <div style="position: sticky; top: 0; background: #1f4d77; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; z-index: 1000; box-shadow: 0 3px 8px rgba(0,0,0,0.2); border-radius: 6px; margin: 10px 12px 14px 12px;">
-        <span style="font-weight: 700; font-size: 15px;">🖨️ जिला {target_district} — इवेंटवार सारांश रैंकिंग रिपोर्ट प्रिव्यू</span>
+    <style>@media print {{ .no-print-toolbar {{ display: none !important; }} }}</style>
+    <div class="no-print-toolbar" style="position: sticky; top: 0; background: #1f4d77; color: white; padding: 8px 16px; display: flex; justify-content: flex-end; align-items: center; z-index: 1000; box-shadow: 0 3px 8px rgba(0,0,0,0.2); border-radius: 6px; margin: 8px 12px 12px 12px;">
         <button onclick="window.print()" style="background: #f59e0b; color: #111827; font-weight: 700; border: none; padding: 7px 18px; border-radius: 5px; cursor: pointer; font-size: 14px;">
             🖨️ अभी प्रिंट करें / Save as PDF
         </button>
@@ -2633,7 +2683,7 @@ def create_district_event_summary_excel(raw_df: pd.DataFrame, target_district: s
     top_cell.alignment = center_align
     curr_row += 1
 
-    date_cell = ws.cell(row=curr_row, column=1, value=f"दिनांक {datetime.now().strftime('%d/%m/%Y %I:%M %p')}")
+    date_cell = ws.cell(row=curr_row, column=1, value=f"⏱️ Data updated on: {get_data_update_timestamp(raw_df)}")
     ws.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=9)
     date_cell.font = Font(name="Calibri", size=10, bold=True, color="1F4D77")
     date_cell.alignment = center_align
@@ -2805,11 +2855,8 @@ def generate_nikay_wise_pdf_html(raw_df: pd.DataFrame, target_district: str, cat
     """
     Generates HTML report for Nikay-wise ranking tables matching the block report style.
     """
-    curr_time = datetime.now().strftime("%d/%m/%Y %I:%M %p")
-    col_m_ts = extract_column_m_timestamp(raw_df)
-    date_display = f"दिनांक {curr_time}"
-    if col_m_ts:
-        date_display += f" | डेटा टाइमस्टैम्प: {col_m_ts}"
+    col_m_ts = get_data_update_timestamp(raw_df)
+    date_display = f"⏱️ Data updated on: {col_m_ts}"
     tables = compute_nikay_wise_tables(raw_df, target_district, categories)
 
     def _render_tbl_html(title, tbl_df):
@@ -2895,14 +2942,18 @@ def generate_nikay_wise_pdf_html(raw_df: pd.DataFrame, target_district: str, cat
 <head>
     <meta charset="UTF-8">
     <title>जिला {target_district} - निकाय स्तरीय रैंकिंग</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Mukta:wght@400;500;600;700;800&family=Noto+Sans+Devanagari:wght@400;500;600;700;800&display=swap');
         @page {{
             size: A4 portrait;
             margin: 12mm 10mm 12mm 10mm;
         }}
         * {{
             box-sizing: border-box;
-            font-family: 'Nirmala UI', 'Mukta', 'Segoe UI', Arial, sans-serif;
+            font-family: 'Mukta', 'Noto Sans Devanagari', 'Nirmala UI', 'Mangal', 'Segoe UI', Arial, sans-serif !important;
         }}
         body {{
             margin: 0;
@@ -3046,7 +3097,7 @@ def create_nikay_wise_pdf(raw_df: pd.DataFrame, target_district: str, categories
     )
 
     elements = []
-    curr_time = datetime.now().strftime("%d/%m/%Y %I:%M %p")
+    curr_time = get_data_update_timestamp(raw_df)
     tables = compute_nikay_wise_tables(raw_df, target_district, categories)
 
     for idx, t_info in enumerate(tables):
@@ -3054,7 +3105,7 @@ def create_nikay_wise_pdf(raw_df: pd.DataFrame, target_district: str, categories
             if idx > 0:
                 elements.append(PageBreak())
             elements.append(Paragraph(f"जिला {target_district} — निकाय स्तरीय रैंकिंग (राज्य के कुल 309 निकायों में से)", title_style))
-            elements.append(Paragraph(f"दिनांक {curr_time}", date_style))
+            elements.append(Paragraph(f"⏱️ Data updated on: {curr_time}", date_style))
             elements.append(Spacer(1, 8))
 
         elements.append(Paragraph(t_info['title'], tbl_title_style))
@@ -3119,12 +3170,12 @@ def create_nikay_wise_pdf(raw_df: pd.DataFrame, target_district: str, categories
 
 def generate_nikay_wise_printable_html(raw_df: pd.DataFrame, target_district: str, categories: list = None) -> str:
     """
-    Generates a web-viewable printable HTML page with print toolbar for Nikay report.
+    Generates a web-viewable printable HTML page with print toolbar for Nikay report (label removed).
     """
     body_html = generate_nikay_wise_pdf_html(raw_df, target_district, categories)
     toolbar = f'''
-    <div style="position: sticky; top: 0; background: #1f4d77; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; z-index: 1000; box-shadow: 0 3px 8px rgba(0,0,0,0.2); border-radius: 6px; margin: 10px 12px 14px 12px;">
-        <span style="font-weight: 700; font-size: 15px;">🖨️ निकाय स्तरीय रैंकिंग रिपोर्ट प्रिव्यू (जिला: {target_district} | राज्य के कुल 309 निकाय)</span>
+    <style>@media print {{ .no-print-toolbar {{ display: none !important; }} }}</style>
+    <div class="no-print-toolbar" style="position: sticky; top: 0; background: #1f4d77; color: white; padding: 8px 16px; display: flex; justify-content: flex-end; align-items: center; z-index: 1000; box-shadow: 0 3px 8px rgba(0,0,0,0.2); border-radius: 6px; margin: 8px 12px 12px 12px;">
         <button onclick="window.print()" style="background: #f59e0b; color: #111827; font-weight: 700; border: none; padding: 7px 18px; border-radius: 5px; cursor: pointer; font-size: 14px;">
             🖨️ अभी प्रिंट करें / Save as PDF
         </button>
@@ -3167,7 +3218,7 @@ def create_nikay_wise_excel(raw_df: pd.DataFrame, target_district: str, categori
     top_cell.alignment = center_align
     curr_row += 1
 
-    date_cell = ws.cell(row=curr_row, column=1, value=f"दिनांक {datetime.now().strftime('%d/%m/%Y %I:%M %p')}")
+    date_cell = ws.cell(row=curr_row, column=1, value=f"⏱️ Data updated on: {get_data_update_timestamp(raw_df)}")
     ws.merge_cells(start_row=curr_row, start_column=1, end_row=curr_row, end_column=10)
     date_cell.font = Font(name="Calibri", size=10, bold=True, color="1F4D77")
     date_cell.alignment = center_align

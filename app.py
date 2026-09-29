@@ -18,7 +18,7 @@ st.set_page_config(
     page_title="VBSJA - जिलावार प्रविष्टि एवं रैंकिंग डैशबोर्ड",
     page_icon="🏆",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed"
 )
 
 # Custom Styling for Simple, Clean, Modern UI/UX
@@ -26,6 +26,11 @@ st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Mukta:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
     
+    /* Hide sidebar completely as requested */
+    [data-testid="stSidebar"] { display: none !important; }
+    [data-testid="stSidebarCollapsedControl"] { display: none !important; }
+    [data-testid="collapsedControl"] { display: none !important; }
+
     html, body, [class*="css"] {
         font-family: 'Mukta', 'Inter', sans-serif;
     }
@@ -229,18 +234,8 @@ def extract_column_m_timestamp(df):
     return None
 
 # ==========================================
-# SIDEBAR CONTROLS & FILTERS
+# SIDEBAR CONTROLS & FILTERS (HIDDEN/REMOVED AS REQUESTED)
 # ==========================================
-with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/3281/3281329.png", width=55)
-    st.title("🎛️ फ़िल्टर पैनल")
-    
-    if st.button("🔄 डेटा रीफ़्रेश करें (Refresh)", use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
-
-    st.markdown("---")
-
 # Load dataset
 with st.spinner("डेटा लोड हो रहा है, कृपया प्रतीक्षा करें..."):
     try:
@@ -274,22 +269,18 @@ def compute_original_state_ranks(df):
 
 overall_district_agg, rank_map = compute_original_state_ranks(raw_df)
 
-# Build filter options: DISTRICT AND BLOCK FILTERS REMOVED AS REQUESTED
-with st.sidebar:
-    st.markdown("#### 🏷️ इवेंट केटेगरी फ़िल्टर")
-    
-    all_categories = sorted([cat for cat in raw_df["इवेंट केटेगरी"].unique() if cat])
-    selected_categories = st.multiselect(
-        "केटेगरी चुनें:",
-        options=all_categories,
-        default=all_categories
-    )
+all_categories = sorted([cat for cat in raw_df["इवेंट केटेगरी"].unique() if cat])
+selected_categories = all_categories
 
-    st.markdown("---")
-    st.caption(f"📌 स्रोत: {data_source_info}")
-    if sheet_timestamp:
-        st.caption(f"⏱️ Data updated on: **{sheet_timestamp}**")
-    st.caption(f"🕒 लोड समय: {datetime.now().strftime('%d-%m-%Y %I:%M %p')}")
+# If sidebar filter panel is needed in future, uncomment below:
+# with st.sidebar:
+#     st.title("🎛️ फ़िल्टर पैनल")
+#     if st.button("🔄 डेटा रीफ़्रेश करें (Refresh)", use_container_width=True):
+#         st.cache_data.clear()
+#         st.rerun()
+#     selected_categories = st.multiselect("केटेगरी चुनें:", options=all_categories, default=all_categories)
+#     if sheet_timestamp:
+#         st.caption(f"⏱️ Data updated on: {sheet_timestamp}")
 
 # ==========================================
 # APPLY FILTERS
@@ -332,6 +323,10 @@ def get_active_filter_summary(district_filter=None, count_label="प्रदर
     c_val = count_value if count_value is not None else len(filtered_df)
     chips.append(f"📊 <b>{count_label}:</b> {c_val:,}")
     text_summary.append(f"{count_label}: {c_val:,}")
+
+    # 4. Data updated on timestamp
+    if sheet_timestamp:
+        chips.append(f"⏱️ <b>Data updated on:</b> {sheet_timestamp}")
     
     html = f"""
     <div class="filter-banner">
@@ -415,7 +410,7 @@ top_district_entries = district_agg.iloc[0]["कुल की गई प्र�
 # ==========================================
 ts_badge_html = ""
 if sheet_timestamp:
-    ts_badge_html = f"""<div style="background: rgba(255, 255, 255, 0.16); border: 1.5px solid rgba(255, 255, 255, 0.4); border-radius: 12px; padding: 8px 18px; text-align: right; backdrop-filter: blur(6px); box-shadow: 0 2px 10px rgba(0,0,0,0.12);"><div style="font-size: 0.78rem; color: #DBEAFE; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; display: flex; align-items: center; justify-content: flex-end; gap: 6px;"><span>⏱️ Data Updated on</span><span style="background: #F59E0B; color: #111827; padding: 1px 6px; border-radius: 4px; font-size: 0.7rem; font-weight: 800;"></span></div><div style="font-size: 1.55rem; font-weight: 800; color: #FFFFFF; line-height: 1.25; margin-top: 2px; letter-spacing: 0.5px;">{sheet_timestamp}</div></div>"""
+    ts_badge_html = f"""<div style="background: rgba(255, 255, 255, 0.16); border: 1.5px solid rgba(255, 255, 255, 0.4); border-radius: 12px; padding: 8px 18px; text-align: right; backdrop-filter: blur(6px); box-shadow: 0 2px 10px rgba(0,0,0,0.12);"><div style="font-size: 0.85rem; color: #DBEAFE; font-weight: 700; letter-spacing: 0.4px;">⏱️ Data updated on:</div><div style="font-size: 1.45rem; font-weight: 800; color: #FFFFFF; line-height: 1.25; margin-top: 2px; letter-spacing: 0.5px;">{sheet_timestamp}</div></div>"""
 
 header_html = f"""<div class="main-header"><div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;"><div><div class="main-title">📊 VBSJA जिलावार प्रविष्टि एवं रैंकिंग पोर्टल</div><div class="subtitle"> प्रत्येक जिले की मूल राज्य रैंकिंग (Original State Rank) के साथ</div></div>{ts_badge_html}</div></div>"""
 
@@ -705,77 +700,56 @@ else:
     with c_event_pdf:
         with st.popover("📑 इवेंटवार PDF", use_container_width=True):
             st.markdown("### 📑 विस्तृत इवेंटवार रिपोर्ट (Event-wise)")
-            st.caption("प्रत्येक इवेंट का अलग-अलग डेटा एवं रैंकिंग सुरक्षित करें:")
             st.info("💡 **महत्वपूर्ण जानकारी:** इस विस्तृत रिपोर्ट के **पृष्ठ 1 पर समग्र मुख्य तालिका (सभी 10 इवेंट्स का कुल योग)** शामिल है, तथा आगे **पृष्ठ 2 से 11 तक प्रत्येक इवेंट का अलग पेज** दिया गया है।")
             
             current_tbl_fmt = "separate" if "अलग" in table_view_mode else "merged"
             dist_suffix = f"_{selected_spotlight_district}" if selected_spotlight_district != ALL_DIST_OPTION else "_All_Districts"
 
             st.markdown("##### 📄 1. सम्पूर्ण 11-पेज विस्तृत PDF (समग्र + 10 इवेंट)")
-            col_b1, col_b2 = st.columns([1, 1.2])
-            with col_b1:
-                btn_prep_ev = st.button("⚡ विस्तृत PDF तैयार करें", key="btn_prep_ev_pdf", use_container_width=True)
-            with col_b2:
-                if btn_prep_ev or st.session_state.get("cached_event_pdf"):
-                    if btn_prep_ev:
-                        with st.spinner("विस्तृत 11-पेज PDF तैयार हो रही है..."):
-                            st.session_state["cached_event_pdf"] = pdf_generator.create_event_wise_pdf(
-                                raw_df=raw_df,
-                                selected_district=selected_spotlight_district,
-                                categories=selected_categories if selected_categories else all_categories,
-                                all_dist_option=ALL_DIST_OPTION,
-                                table_format=current_tbl_fmt,
-                                rank_map=rank_map
-                            )
-                    st.download_button(
-                        label="⬇️ सम्पूर्ण विस्तृत PDF डाउनलोड करें",
-                        data=st.session_state["cached_event_pdf"],
-                        file_name=f"VBSJA_Event_Wise_Report{dist_suffix}_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-                        mime="application/pdf",
-                        use_container_width=True,
-                        key="btn_dl_event_full_pdf"
-                    )
-                else:
-                    st.caption("👈 बटन दबाकर PDF तैयार करें")
+            ev_pdf_bytes = pdf_generator.create_event_wise_pdf(
+                raw_df=raw_df,
+                selected_district=selected_spotlight_district,
+                categories=selected_categories if selected_categories else all_categories,
+                all_dist_option=ALL_DIST_OPTION,
+                table_format=current_tbl_fmt,
+                rank_map=rank_map
+            )
+            st.download_button(
+                label="⬇️ सम्पूर्ण विस्तृत PDF डाउनलोड करें",
+                data=ev_pdf_bytes,
+                file_name=f"VBSJA_Event_Wise_Report{dist_suffix}.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+                key="btn_dl_event_full_pdf"
+            )
 
             st.markdown("---")
             st.markdown("##### 📦 2. प्रत्येक इवेंट की अलग PDF (ZIP बंडल)")
-            col_z1, col_z2 = st.columns([1, 1.2])
-            with col_z1:
-                btn_prep_z = st.button("⚡ ZIP बंडल तैयार करें", key="btn_prep_ev_zip", use_container_width=True)
-            with col_z2:
-                if btn_prep_z or st.session_state.get("cached_event_zip"):
-                    if btn_prep_z:
-                        with st.spinner("सभी 11 PDF फ़ाइलों का ZIP बंडल तैयार हो रहा है..."):
-                            st.session_state["cached_event_zip"] = pdf_generator.create_event_wise_zip(
-                                raw_df=raw_df,
-                                selected_district=selected_spotlight_district,
-                                categories=selected_categories if selected_categories else all_categories,
-                                all_dist_option=ALL_DIST_OPTION,
-                                table_format=current_tbl_fmt,
-                                rank_map=rank_map
-                            )
-                    st.download_button(
-                        label="⬇️ ZIP फ़ाइल डाउनलोड करें",
-                        data=st.session_state["cached_event_zip"],
-                        file_name=f"VBSJA_Event_Separate_PDFs{dist_suffix}_{datetime.now().strftime('%Y%m%d_%H%M')}.zip",
-                        mime="application/zip",
-                        use_container_width=True,
-                        key="btn_dl_event_zip"
-                    )
-                else:
-                    st.caption("👈 बटन दबाकर ZIP तैयार करें")
+            ev_zip_bytes = pdf_generator.create_event_wise_zip(
+                raw_df=raw_df,
+                selected_district=selected_spotlight_district,
+                categories=selected_categories if selected_categories else all_categories,
+                all_dist_option=ALL_DIST_OPTION,
+                table_format=current_tbl_fmt,
+                rank_map=rank_map
+            )
+            st.download_button(
+                label="⬇️ ZIP फ़ाइल डाउनलोड करें",
+                data=ev_zip_bytes,
+                file_name=f"VBSJA_Event_Separate_PDFs{dist_suffix}.zip",
+                mime="application/zip",
+                use_container_width=True,
+                key="btn_dl_event_zip"
+            )
         
     with c_print:
         with st.popover("🖨️ प्रिंट प्रिव्यू (Print)", use_container_width=True):
-            st.markdown(f"### 🖨️ {report_title} प्रिंट (Portrait)")
-            st.caption("नीचे दिए गए बटन से सीधे प्रिंट करें अथवा ब्राउज़र के 'Save as PDF' विकल्प का उपयोग करें (Portrait A4):")
             printable_html = pdf_generator.generate_printable_html(
                 active_district_table,
                 title=report_title,
                 active_filters_text=filter_plain_text
             )
-            components.html(printable_html, height=450, scrolling=True)
+            components.html(printable_html, height=480, scrolling=True)
             
     with c_excel:
         buffer = io.BytesIO()
@@ -877,53 +851,37 @@ st.markdown(f"##### 📥 जिला {chosen_summ_dist} इवेंट सा�
 s_exp1, s_exp2, s_exp3, s_exp4 = st.columns([1.1, 1.1, 1.1, 1.3])
 
 with s_exp1:
-    s_pdf_key = f"cached_dsumm_pdf_{chosen_summ_dist}"
-    btn_s_pdf = st.button(f"⚡ {chosen_summ_dist} सारांश PDF बनाएं", width="stretch", key=f"btn_p_dsumm_pdf_{chosen_summ_dist}")
-    if btn_s_pdf or st.session_state.get(s_pdf_key):
-        if btn_s_pdf:
-            with st.spinner("इवेंट सारांश PDF तैयार हो रही है..."):
-                st.session_state[s_pdf_key] = pdf_generator.create_district_event_summary_pdf(
-                    raw_df=raw_df,
-                    target_district=chosen_summ_dist,
-                    categories=selected_categories if selected_categories else all_categories
-                )
-        st.download_button(
-            label=f"⬇️ {chosen_summ_dist} सारांश PDF",
-            data=st.session_state[s_pdf_key],
-            file_name=f"District_{chosen_summ_dist}_Event_Summary_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-            mime="application/pdf",
-            width="stretch",
-            key=f"btn_dl_dsumm_pdf_{chosen_summ_dist}"
-        )
-    else:
-        st.caption("👈 बटन दबाकर PDF तैयार करें")
+    dsumm_pdf_bytes = pdf_generator.create_district_event_summary_pdf(
+        raw_df=raw_df,
+        target_district=chosen_summ_dist,
+        categories=selected_categories if selected_categories else all_categories
+    )
+    st.download_button(
+        label=f"⬇️ {chosen_summ_dist} सारांश PDF",
+        data=dsumm_pdf_bytes,
+        file_name=f"District_{chosen_summ_dist}_Event_Summary.pdf",
+        mime="application/pdf",
+        width="stretch",
+        key=f"btn_dl_dsumm_pdf_{chosen_summ_dist}"
+    )
 
 with s_exp2:
-    s_xl_key = f"cached_dsumm_xl_{chosen_summ_dist}"
-    btn_s_xl = st.button(f"⚡ {chosen_summ_dist} सारांश Excel बनाएं", width="stretch", key=f"btn_p_dsumm_xl_{chosen_summ_dist}")
-    if btn_s_xl or st.session_state.get(s_xl_key):
-        if btn_s_xl:
-            with st.spinner("इवेंट सारांश Excel तैयार हो रहा है..."):
-                st.session_state[s_xl_key] = pdf_generator.create_district_event_summary_excel(
-                    raw_df=raw_df,
-                    target_district=chosen_summ_dist,
-                    categories=selected_categories if selected_categories else all_categories
-                )
-        st.download_button(
-            label=f"⬇️ {chosen_summ_dist} सारांश Excel",
-            data=st.session_state[s_xl_key],
-            file_name=f"District_{chosen_summ_dist}_Event_Summary_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            width="stretch",
-            key=f"btn_dl_dsumm_xl_{chosen_summ_dist}"
-        )
-    else:
-        st.caption("👈 बटन दबाकर Excel तैयार करें")
+    dsumm_xl_bytes = pdf_generator.create_district_event_summary_excel(
+        raw_df=raw_df,
+        target_district=chosen_summ_dist,
+        categories=selected_categories if selected_categories else all_categories
+    )
+    st.download_button(
+        label=f"⬇️ {chosen_summ_dist} सारांश Excel",
+        data=dsumm_xl_bytes,
+        file_name=f"District_{chosen_summ_dist}_Event_Summary.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        width="stretch",
+        key=f"btn_dl_dsumm_xl_{chosen_summ_dist}"
+    )
 
 with s_exp3:
     with st.popover(f"🖨️ {chosen_summ_dist} प्रिंट प्रिव्यू", width="stretch"):
-        st.markdown(f"### 🖨️ जिला {chosen_summ_dist} — इवेंट सारांश प्रिंट")
-        st.caption("नीचे दिए गए बटन से सीधे प्रिंट करें अथवा ब्राउज़र के 'Save as PDF' विकल्प का उपयोग करें (Portrait A4):")
         sec_summ_print_html = pdf_generator.generate_district_event_summary_printable_html(
             raw_df=raw_df,
             target_district=chosen_summ_dist,
@@ -946,7 +904,7 @@ with s_exp4:
             st.download_button(
                 label="⬇️ सभी 41 जिलों का ZIP डाउनलोड करें",
                 data=st.session_state["cached_dsumm_all_zip"],
-                file_name=f"All_Districts_Event_Summary_PDFs_{datetime.now().strftime('%Y%m%d_%H%M')}.zip",
+                file_name="All_Districts_Event_Summary_PDFs.zip",
                 mime="application/zip",
                 width="stretch",
                 key="btn_dl_dsumm_all_zip"
@@ -956,8 +914,8 @@ with s_exp4:
 
 # Render Interactive Screen Table (matching screenshot 1:1)
 def render_interactive_summary_table(df_t, dist_name, total_dist_count):
-    curr_t = datetime.now().strftime("%d/%m/%Y %I:%M %p")
-    t_title = f"जिला {dist_name} — सभी इवेंट केटेगरी में रैंक दिनांक {curr_t}"
+    ts_str = sheet_timestamp if sheet_timestamp else pdf_generator.get_data_update_timestamp(raw_df)
+    t_title = f"जिला {dist_name} — सभी इवेंट केटेगरी में रैंक (⏱️ Data updated on: {ts_str})"
 
     rows_html = []
     for _, r in df_t.iterrows():
@@ -1071,53 +1029,37 @@ block_tables = pdf_generator.compute_block_wise_tables(
 st.markdown(f"##### 📥 जिला {chosen_block_dist} ब्लॉक रिपोर्ट निर्यात एवं प्रिंट:")
 b_exp1, b_exp2, b_exp3 = st.columns([1.2, 1.2, 1.2])
 with b_exp1:
-    b_pdf_key = f"cached_bpdf_{chosen_block_dist}"
-    btn_bpdf = st.button(f"⚡ {chosen_block_dist} ब्लॉक PDF तैयार करें", use_container_width=True, key=f"btn_p_bpdf_{chosen_block_dist}")
-    if btn_bpdf or st.session_state.get(b_pdf_key):
-        if btn_bpdf:
-            with st.spinner("ब्लॉक PDF तैयार हो रही है..."):
-                st.session_state[b_pdf_key] = pdf_generator.create_block_wise_pdf(
-                    raw_df=raw_df,
-                    target_district=chosen_block_dist,
-                    categories=selected_categories if selected_categories else all_categories
-                )
-        st.download_button(
-            label=f"⬇️ {chosen_block_dist} ब्लॉक PDF डाउनलोड करें",
-            data=st.session_state[b_pdf_key],
-            file_name=f"VBSJA_Block_Ranking_{chosen_block_dist}_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-            mime="application/pdf",
-            use_container_width=True,
-            key=f"btn_dl_sec_block_pdf_{chosen_block_dist}"
-        )
-    else:
-        st.caption("👈 बटन दबाकर ब्लॉक PDF तैयार करें")
+    b_pdf_bytes = pdf_generator.create_block_wise_pdf(
+        raw_df=raw_df,
+        target_district=chosen_block_dist,
+        categories=selected_categories if selected_categories else all_categories
+    )
+    st.download_button(
+        label=f"⬇️ {chosen_block_dist} ब्लॉक PDF डाउनलोड करें",
+        data=b_pdf_bytes,
+        file_name=f"VBSJA_Block_Ranking_{chosen_block_dist}.pdf",
+        mime="application/pdf",
+        use_container_width=True,
+        key=f"btn_dl_sec_block_pdf_{chosen_block_dist}"
+    )
 
 with b_exp2:
-    b_xl_key = f"cached_bxl_{chosen_block_dist}"
-    btn_bxl = st.button(f"⚡ {chosen_block_dist} ब्लॉक Excel तैयार करें", use_container_width=True, key=f"btn_p_bxl_{chosen_block_dist}")
-    if btn_bxl or st.session_state.get(b_xl_key):
-        if btn_bxl:
-            with st.spinner("ब्लॉक Excel तैयार हो रहा है..."):
-                st.session_state[b_xl_key] = pdf_generator.create_block_wise_excel(
-                    raw_df=raw_df,
-                    target_district=chosen_block_dist,
-                    categories=selected_categories if selected_categories else all_categories
-                )
-        st.download_button(
-            label=f"⬇️ {chosen_block_dist} ब्लॉक Excel डाउनलोड करें",
-            data=st.session_state[b_xl_key],
-            file_name=f"VBSJA_Block_Ranking_{chosen_block_dist}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-            key=f"btn_dl_sec_block_excel_{chosen_block_dist}"
-        )
-    else:
-        st.caption("👈 बटन दबाकर ब्लॉक Excel तैयार करें")
+    b_xl_bytes = pdf_generator.create_block_wise_excel(
+        raw_df=raw_df,
+        target_district=chosen_block_dist,
+        categories=selected_categories if selected_categories else all_categories
+    )
+    st.download_button(
+        label=f"⬇️ {chosen_block_dist} ब्लॉक Excel डाउनलोड करें",
+        data=b_xl_bytes,
+        file_name=f"VBSJA_Block_Ranking_{chosen_block_dist}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+        key=f"btn_dl_sec_block_excel_{chosen_block_dist}"
+    )
 
 with b_exp3:
     with st.popover(f"🖨️ {chosen_block_dist} ब्लॉक प्रिंट प्रिव्यू", use_container_width=True):
-        st.markdown(f"### 🖨️ जिला {chosen_block_dist} — ब्लॉक रिपोर्ट प्रिंट")
-        st.caption("नीचे दिए गए बटन से सीधे प्रिंट करें अथवा ब्राउज़र के 'Save as PDF' विकल्प का उपयोग करें (Portrait A4):")
         sec_block_print_html = pdf_generator.generate_block_wise_printable_html(
             raw_df=raw_df,
             target_district=chosen_block_dist,
@@ -1244,53 +1186,37 @@ nikay_tables = pdf_generator.compute_nikay_wise_tables(
 st.markdown(f"##### 📥 जिला {chosen_nikay_dist} निकाय रिपोर्ट निर्यात एवं प्रिंट:")
 n_exp1, n_exp2, n_exp3 = st.columns([1.2, 1.2, 1.2])
 with n_exp1:
-    n_pdf_key = f"cached_npdf_{chosen_nikay_dist}"
-    btn_npdf = st.button(f"⚡ {chosen_nikay_dist} निकाय PDF तैयार करें", width="stretch", key=f"btn_p_npdf_{chosen_nikay_dist}")
-    if btn_npdf or st.session_state.get(n_pdf_key):
-        if btn_npdf:
-            with st.spinner("निकाय PDF तैयार हो रही है..."):
-                st.session_state[n_pdf_key] = pdf_generator.create_nikay_wise_pdf(
-                    raw_df=raw_df,
-                    target_district=chosen_nikay_dist,
-                    categories=selected_categories if selected_categories else all_categories
-                )
-        st.download_button(
-            label=f"⬇️ {chosen_nikay_dist} निकाय PDF डाउनलोड करें",
-            data=st.session_state[n_pdf_key],
-            file_name=f"VBSJA_Nikay_Ranking_{chosen_nikay_dist}_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
-            mime="application/pdf",
-            width="stretch",
-            key=f"btn_dl_sec_nikay_pdf_{chosen_nikay_dist}"
-        )
-    else:
-        st.caption("👈 बटन दबाकर निकाय PDF तैयार करें")
+    n_pdf_bytes = pdf_generator.create_nikay_wise_pdf(
+        raw_df=raw_df,
+        target_district=chosen_nikay_dist,
+        categories=selected_categories if selected_categories else all_categories
+    )
+    st.download_button(
+        label=f"⬇️ {chosen_nikay_dist} निकाय PDF डाउनलोड करें",
+        data=n_pdf_bytes,
+        file_name=f"VBSJA_Nikay_Ranking_{chosen_nikay_dist}.pdf",
+        mime="application/pdf",
+        width="stretch",
+        key=f"btn_dl_sec_nikay_pdf_{chosen_nikay_dist}"
+    )
 
 with n_exp2:
-    n_xl_key = f"cached_nxl_{chosen_nikay_dist}"
-    btn_nxl = st.button(f"⚡ {chosen_nikay_dist} निकाय Excel तैयार करें", width="stretch", key=f"btn_p_nxl_{chosen_nikay_dist}")
-    if btn_nxl or st.session_state.get(n_xl_key):
-        if btn_nxl:
-            with st.spinner("निकाय Excel तैयार हो रहा है..."):
-                st.session_state[n_xl_key] = pdf_generator.create_nikay_wise_excel(
-                    raw_df=raw_df,
-                    target_district=chosen_nikay_dist,
-                    categories=selected_categories if selected_categories else all_categories
-                )
-        st.download_button(
-            label=f"⬇️ {chosen_nikay_dist} निकाय Excel डाउनलोड करें",
-            data=st.session_state[n_xl_key],
-            file_name=f"VBSJA_Nikay_Ranking_{chosen_nikay_dist}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            width="stretch",
-            key=f"btn_dl_sec_nikay_excel_{chosen_nikay_dist}"
-        )
-    else:
-        st.caption("👈 बटन दबाकर निकाय Excel तैयार करें")
+    n_xl_bytes = pdf_generator.create_nikay_wise_excel(
+        raw_df=raw_df,
+        target_district=chosen_nikay_dist,
+        categories=selected_categories if selected_categories else all_categories
+    )
+    st.download_button(
+        label=f"⬇️ {chosen_nikay_dist} निकाय Excel डाउनलोड करें",
+        data=n_xl_bytes,
+        file_name=f"VBSJA_Nikay_Ranking_{chosen_nikay_dist}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        width="stretch",
+        key=f"btn_dl_sec_nikay_excel_{chosen_nikay_dist}"
+    )
 
 with n_exp3:
     with st.popover(f"🖨️ {chosen_nikay_dist} निकाय प्रिंट प्रिव्यू", width="stretch"):
-        st.markdown(f"### 🖨️ जिला {chosen_nikay_dist} — निकाय रिपोर्ट प्रिंट")
-        st.caption("नीचे दिए गए बटन से सीधे प्रिंट करें अथवा ब्राउज़र के 'Save as PDF' विकल्प का उपयोग करें (Portrait A4):")
         sec_nikay_print_html = pdf_generator.generate_nikay_wise_printable_html(
             raw_df=raw_df,
             target_district=chosen_nikay_dist,
